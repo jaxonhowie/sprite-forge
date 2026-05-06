@@ -38,5 +38,8 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Local docs
+docs/
+
 # Local settings
 .claude/
