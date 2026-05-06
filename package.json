@@ -1,0 +1,15 @@
+{
+  "name": "sprite-forge",
+  "private": true,
+  "scripts": {
+    "setup": "npm install && npm --prefix apps/web install && pip install -r services/api/requirements.txt",
+    "dev": "concurrently -n web,api -c blue,green \"npm run dev:web\" \"npm run dev:api\"",
+    "dev:web": "npm --prefix apps/web run dev",
+    "dev:api": "cd services/api && uvicorn forge_api.main:app --reload --port 8000",
+    "build": "npm --prefix apps/web run build",
+    "start": "cd services/api && uvicorn forge_api.main:app --port 8000"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}

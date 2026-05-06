@@ -1,0 +1,138 @@
+export interface VideoUploadResponse {
+  video_id: string;
+  duration_ms: number;
+  fps: number;
+  width: number;
+  height: number;
+  url: string;
+}
+
+export interface VideoMeta {
+  id: string;
+  filename: string;
+  duration_ms: number;
+  fps: number;
+  width: number;
+  height: number;
+  created_at: string;
+}
+
+export interface CreateJobRequest {
+  video_id: string;
+  timestamps_ms: number[];
+  remove_bg: boolean;
+  watermark_box: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null;
+  layout: {
+    cols: number;
+    padding: number;
+  };
+}
+
+export interface JobResponse {
+  job_id: string;
+  status: string;
+}
+
+export interface JobStatus {
+  id: string;
+  video_id: string;
+  status: string;
+  progress: number;
+  stage: string;
+  params: CreateJobRequest;
+  error: string | null;
+  created_at: string;
+  finished_at: string | null;
+  result?: {
+    spritesheet_url: string;
+    json_url: string;
+  };
+}
+
+const BASE_URL = '';
+
+async function request<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const url = `${BASE_URL}${path}`;
+  
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.text().catch(() => response.statusText);
+    throw new Error(`请求失败 (${response.status}): ${error}`);
+  }
+
+  return response.json();
+}
+
+export async function uploadVideo(
+  file: File,
+  onProgress?: (progress: number) => void
+): Promise<VideoUploadResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const xhr = new XMLHttpRequest();
+
+  return new Promise((resolve, reject) => {
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    });
+
+    xhr.onload = () => {
+      if (xhr.status === 200) {
+        resolve(JSON.parse(xhr.responseText));
+      } else {
+        reject(new Error(`上传失败: ${xhr.status}`));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('网络错误'));
+    xhr.open('POST', '/api/videos');
+    xhr.send(formData);
+  });
+}
+
+export async function getVideoMeta(videoId: string): Promise<VideoMeta> {
+  return request<VideoMeta>(`/api/videos/${videoId}`);
+}
+
+export async function createJob(jobData: CreateJobRequest): Promise<JobResponse> {
+  return request<JobResponse>('/api/jobs', {
+    method: 'POST',
+    body: JSON.stringify(jobData),
+  });
+}
+
+export async function getJobStatus(jobId: string): Promise<JobStatus> {
+  return request<JobStatus>(`/api/jobs/${jobId}`);
+}
+
+export async function deleteJob(jobId: string): Promise<void> {
+  await request(`/api/jobs/${jobId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function getJobExportUrl(jobId: string): string {
+  return `/api/jobs/${jobId}/export.zip`;
+}
+
+export function getFileUrl(path: string): string {
+  return `/files${path}`;
+}
