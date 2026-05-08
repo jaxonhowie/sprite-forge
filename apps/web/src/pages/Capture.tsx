@@ -1,6 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Timeline from '../components/Timeline';
+import { deleteVideo, getVideoMeta } from '../api/client';
+import useVideoFrame from '../hooks/useVideoFrame';
+import { clearWorkflow, setFrameTimestamps } from '../utils/workflowState';
 
 interface Frame {
   ts_ms: number;
@@ -10,108 +13,38 @@ interface Frame {
 export default function Capture() {
   const { videoId } = useParams<{ videoId: string }>();
   const navigate = useNavigate();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
   const [frames, setFrames] = useState<Frame[]>([]);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [metadataDuration, setMetadataDuration] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+
+  const {
+    videoRef,
+    canvasRef,
+    isPlaying,
+    currentTime,
+    duration,
+    seek,
+    captureFrame,
+    stepForward,
+    stepBackward,
+    togglePlay,
+    pause,
+  } = useVideoFrame({
+    videoSrc: videoUrl ?? '',
+    metadataDurationMs: metadataDuration,
+  });
 
   useEffect(() => {
     if (videoId) {
-      setVideoUrl(`/files/uploads/${videoId}/source.mp4`);
+      getVideoMeta(videoId)
+        .then((meta) => {
+          setVideoUrl(meta.url);
+          setMetadataDuration(meta.duration_ms);
+        })
+        .catch(() => setError('视频元数据加载失败'));
     }
   }, [videoId]);
-
-  const captureFrame = useCallback(() => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    
-    if (!video || !canvas || !video.videoWidth) return null;
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-
-    ctx.drawImage(video, 0, 0);
-    return canvas.toDataURL('image/png');
-  }, []);
-
-  const getVideoDurationMs = useCallback(() => {
-    const v = videoRef.current;
-    if (v && v.duration && isFinite(v.duration)) {
-      return v.duration * 1000;
-    }
-    return duration;
-  }, [duration]);
-
-  const handleTimeUpdate = useCallback(() => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime * 1000);
-    }
-  }, []);
-
-  const handleLoadedMetadata = useCallback(() => {
-    if (videoRef.current) {
-      setDuration(videoRef.current.duration * 1000);
-    }
-  }, []);
-
-  const handleDurationChange = useCallback(() => {
-    if (videoRef.current && videoRef.current.duration && isFinite(videoRef.current.duration)) {
-      setDuration(videoRef.current.duration * 1000);
-    }
-  }, []);
-
-  const handlePlay = useCallback(() => setIsPlaying(true), []);
-  const handlePause = useCallback(() => setIsPlaying(false), []);
-
-  const handleSeek = useCallback((timeMs: number) => {
-    const video = videoRef.current;
-    if (!video) return;
-    const dur = getVideoDurationMs();
-    if (dur <= 0) return;
-    const clamped = Math.max(0, Math.min(timeMs, dur));
-    video.currentTime = clamped / 1000;
-    setCurrentTime(clamped);
-  }, [getVideoDurationMs]);
-
-  const handleStepForward = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    const dur = getVideoDurationMs();
-    if (dur <= 0) return;
-    const step = 1000 / 30;
-    const newTime = Math.min(currentTime + step, dur);
-    video.currentTime = newTime / 1000;
-    setCurrentTime(newTime);
-  }, [currentTime, getVideoDurationMs]);
-
-  const handleStepBackward = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    const step = 1000 / 30;
-    const newTime = Math.max(currentTime - step, 0);
-    video.currentTime = newTime / 1000;
-    setCurrentTime(newTime);
-  }, [currentTime]);
-
-  const handlePlayPause = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    if (video.paused) {
-      video.play();
-      setIsPlaying(true);
-    } else {
-      video.pause();
-      setIsPlaying(false);
-    }
-  }, []);
 
   const handleMarkFrame = useCallback(() => {
     const dataUrl = captureFrame();
@@ -124,23 +57,36 @@ export default function Capture() {
     switch (e.key) {
       case 'ArrowLeft':
         e.preventDefault();
-        handleStepBackward();
+        void stepBackward();
         break;
       case 'ArrowRight':
         e.preventDefault();
-        handleStepForward();
+        void stepForward();
         break;
       case ' ':
         e.preventDefault();
         handleMarkFrame();
         break;
     }
-  }, [handleStepBackward, handleStepForward, handleMarkFrame]);
+  }, [stepBackward, stepForward, handleMarkFrame]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
+
+  const handleReupload = useCallback(async () => {
+    pause();
+    if (videoId) {
+      clearWorkflow(videoId);
+      try {
+        await deleteVideo(videoId);
+      } catch {
+        // Local workflow cleanup should still complete if the upload was already gone.
+      }
+    }
+    navigate('/');
+  }, [pause, videoId, navigate]);
 
   const handleContinue = useCallback(() => {
     if (frames.length === 0) {
@@ -148,8 +94,10 @@ export default function Capture() {
       return;
     }
 
+    if (!videoId) return;
+
     const timestamps = frames.map(f => f.ts_ms);
-    sessionStorage.setItem(`frames_${videoId}`, JSON.stringify(timestamps));
+    setFrameTimestamps(videoId, timestamps);
     navigate(`/frames/${videoId}`);
   }, [frames, videoId, navigate]);
 
@@ -163,7 +111,15 @@ export default function Capture() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <h2 className="text-3xl font-bold mb-8">截取关键帧</h2>
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-3xl font-bold">截取关键帧</h2>
+        <button
+          onClick={handleReupload}
+          className="self-start rounded bg-gray-700 px-4 py-2 text-sm font-medium hover:bg-gray-600 sm:self-auto"
+        >
+          重新上传视频
+        </button>
+      </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
@@ -174,11 +130,6 @@ export default function Capture() {
                 src={videoUrl}
                 className="w-full"
                 preload="auto"
-                onTimeUpdate={handleTimeUpdate}
-                onLoadedMetadata={handleLoadedMetadata}
-                onDurationChange={handleDurationChange}
-                onPlay={handlePlay}
-                onPause={handlePause}
                 onError={() => setError('视频加载失败')}
               />
             )}
@@ -186,19 +137,19 @@ export default function Capture() {
 
           <Timeline
             currentTime={currentTime}
-            duration={getVideoDurationMs()}
-            onSeek={handleSeek}
+            duration={duration}
+            onSeek={(timeMs) => void seek(timeMs)}
           />
 
           <div className="flex justify-center gap-4 mt-4">
             <button
-              onClick={handleStepBackward}
+              onClick={() => void stepBackward()}
               className="px-4 py-2 bg-gray-700 rounded hover:bg-gray-600"
             >
               ← 前一帧
             </button>
             <button
-              onClick={handlePlayPause}
+              onClick={togglePlay}
               className="px-4 py-2 bg-gray-700 rounded hover:bg-gray-600"
             >
               {isPlaying ? '⏸ 暂停' : '▶ 播放'}
@@ -210,7 +161,7 @@ export default function Capture() {
               标记帧 (Space)
             </button>
             <button
-              onClick={handleStepForward}
+              onClick={() => void stepForward()}
               className="px-4 py-2 bg-gray-700 rounded hover:bg-gray-600"
             >
               后一帧 →

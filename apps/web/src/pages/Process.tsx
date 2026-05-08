@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import BoxSelector from '../components/BoxSelector';
+import { createJob, deleteVideo, getVideoMeta } from '../api/client';
+import useVideoFrame from '../hooks/useVideoFrame';
+import { clearWorkflow, getFrameTimestamps } from '../utils/workflowState';
 
 interface WatermarkBox {
   x: number;
@@ -17,11 +20,11 @@ interface Layout {
 export default function Process() {
   const { videoId } = useParams<{ videoId: string }>();
   const navigate = useNavigate();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   
   const [timestamps, setTimestamps] = useState<number[]>([]);
   const [thumbnails, setThumbnails] = useState<Map<number, string>>(new Map());
+  const [videoUrl, setVideoUrl] = useState('');
+  const [metadataDuration, setMetadataDuration] = useState(0);
   const [removeBg, setRemoveBg] = useState(true);
   const [enableWatermark, setEnableWatermark] = useState(false);
   const [watermarkBox, setWatermarkBox] = useState<WatermarkBox | null>(null);
@@ -34,90 +37,54 @@ export default function Process() {
   
   const wsRef = useRef<WebSocket | null>(null);
 
-  const videoUrl = videoId ? `/files/uploads/${videoId}/source.mp4` : '';
-
-  const captureThumbnail = useCallback((timeMs: number): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      if (!video || !canvas) {
-        reject(new Error('视频元素不可用'));
-        return;
-      }
-
-      const onSeeked = () => {
-        video.removeEventListener('seeked', onSeeked);
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('无法获取 canvas 上下文'));
-          return;
-        }
-        ctx.drawImage(video, 0, 0);
-        resolve(canvas.toDataURL('image/png'));
-      };
-
-      video.addEventListener('seeked', onSeeked);
-      video.currentTime = timeMs / 1000;
-    });
-  }, []);
+  const { videoRef, canvasRef, isReady, captureFrameAt } = useVideoFrame({
+    videoSrc: videoUrl,
+    metadataDurationMs: metadataDuration,
+  });
 
   useEffect(() => {
-    const stored = sessionStorage.getItem(`frames_${videoId}`);
+    if (!videoId) return;
+
+    const stored = getFrameTimestamps(videoId);
     if (!stored) {
       setError('未找到帧数据，请返回重新截取');
       setLoading(false);
       return;
     }
 
-    try {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        if (typeof parsed[0] === 'number') {
-          setTimestamps(parsed);
-        } else {
-          setTimestamps(parsed.map((f: { ts_ms: number }) => f.ts_ms));
-        }
-      } else {
-        setError('帧数据为空');
+    setTimestamps(stored);
+    getVideoMeta(videoId)
+      .then((meta) => {
+        setVideoUrl(meta.url);
+        setMetadataDuration(meta.duration_ms);
+      })
+      .catch(() => {
+        setError('视频元数据加载失败');
         setLoading(false);
-      }
-    } catch {
-      setError('帧数据解析失败');
-      setLoading(false);
-    }
+      });
   }, [videoId]);
 
   const generateThumbnails = useCallback(async () => {
     if (timestamps.length === 0) return;
 
-    const video = videoRef.current;
-    if (!video || !video.duration) return;
-
     const map = new Map<number, string>();
     for (const ts of timestamps) {
       try {
-        const dataUrl = await captureThumbnail(ts);
-        map.set(ts, dataUrl);
+        const dataUrl = await captureFrameAt(ts);
+        if (dataUrl) map.set(ts, dataUrl);
       } catch {
         // skip failed thumbnails
       }
     }
     setThumbnails(map);
     setLoading(false);
-  }, [timestamps, captureThumbnail]);
+  }, [timestamps, captureFrameAt]);
 
   useEffect(() => {
-    if (timestamps.length > 0 && videoRef.current) {
-      const video = videoRef.current;
-      if (video.readyState >= 1) {
-        generateThumbnails();
-      } else {
-        video.addEventListener('loadedmetadata', () => generateThumbnails(), { once: true });
-      }
+    if (timestamps.length > 0 && isReady) {
+      void generateThumbnails();
     }
-  }, [timestamps, generateThumbnails]);
+  }, [timestamps, isReady, generateThumbnails]);
 
   const handleStartProcess = useCallback(async () => {
     if (timestamps.length === 0) {
@@ -129,23 +96,17 @@ export default function Process() {
     setError(null);
 
     try {
-      const response = await fetch('/api/jobs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          video_id: videoId,
-          timestamps_ms: timestamps,
-          remove_bg: removeBg,
-          watermark_box: enableWatermark ? watermarkBox : null,
-          layout: layout,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`创建任务失败: ${response.status}`);
+      if (!videoId) {
+        throw new Error('视频 ID 缺失');
       }
 
-      const { job_id } = await response.json();
+      const { job_id } = await createJob({
+        video_id: videoId,
+        timestamps_ms: timestamps,
+        remove_bg: removeBg,
+        watermark_box: enableWatermark ? watermarkBox : null,
+        layout,
+      });
 
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${wsProtocol}//${window.location.host}/ws/jobs/${job_id}`;
@@ -197,6 +158,20 @@ export default function Process() {
     navigate(`/frames/${videoId}`);
   }, [videoId, navigate]);
 
+  const handleReupload = useCallback(async () => {
+    if (isProcessing) return;
+
+    if (videoId) {
+      clearWorkflow(videoId);
+      try {
+        await deleteVideo(videoId);
+      } catch {
+        // The upload may already be gone; navigating home still clears the local workflow.
+      }
+    }
+    navigate('/');
+  }, [isProcessing, videoId, navigate]);
+
   const stageLabels: Record<string, string> = {
     extract: '截帧',
     inpaint: '去水印',
@@ -208,7 +183,16 @@ export default function Process() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <h2 className="text-3xl font-bold mb-8">处理设置</h2>
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-3xl font-bold">处理设置</h2>
+        <button
+          onClick={handleReupload}
+          disabled={isProcessing}
+          className="self-start rounded bg-gray-700 px-4 py-2 text-sm font-medium hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
+        >
+          重新上传视频
+        </button>
+      </div>
 
       <video
         ref={videoRef}
@@ -348,7 +332,7 @@ export default function Process() {
               onClick={handleBack}
               className="px-6 py-3 bg-gray-700 rounded hover:bg-gray-600"
             >
-              ← 返回
+              ← 返回帧列表
             </button>
             <button
               onClick={handleStartProcess}

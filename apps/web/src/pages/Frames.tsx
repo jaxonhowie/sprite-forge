@@ -1,5 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { deleteVideo, getVideoMeta } from '../api/client';
+import useVideoFrame from '../hooks/useVideoFrame';
+import { clearWorkflow, getFrameTimestamps, setFrameTimestamps } from '../utils/workflowState';
 
 interface Frame {
   ts_ms: number;
@@ -9,110 +12,76 @@ interface Frame {
 export default function Frames() {
   const { videoId } = useParams<{ videoId: string }>();
   const navigate = useNavigate();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
   const [timestamps, setTimestamps] = useState<number[]>([]);
+  const [videoUrl, setVideoUrl] = useState('');
+  const [metadataDuration, setMetadataDuration] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const videoUrl = videoId ? `/files/uploads/${videoId}/source.mp4` : '';
-
-  const captureThumbnail = useCallback((timeMs: number): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      if (!video || !canvas) {
-        reject(new Error('视频元素不可用'));
-        return;
-      }
-
-      const onSeeked = () => {
-        video.removeEventListener('seeked', onSeeked);
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('无法获取 canvas 上下文'));
-          return;
-        }
-        ctx.drawImage(video, 0, 0);
-        resolve(canvas.toDataURL('image/png'));
-      };
-
-      video.addEventListener('seeked', onSeeked);
-      video.currentTime = timeMs / 1000;
-    });
-  }, []);
+  const { videoRef, canvasRef, isReady, captureFrameAt } = useVideoFrame({
+    videoSrc: videoUrl,
+    metadataDurationMs: metadataDuration,
+  });
 
   useEffect(() => {
-    const stored = sessionStorage.getItem(`frames_${videoId}`);
+    if (!videoId) return;
+
+    const stored = getFrameTimestamps(videoId);
     if (!stored) {
       setError('未找到帧数据，请返回重新截取');
       setLoading(false);
       return;
     }
 
-    try {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        if (typeof parsed[0] === 'number') {
-          setTimestamps(parsed);
-        } else {
-          setTimestamps(parsed.map((f: Frame) => f.ts_ms));
-        }
-      } else {
-        setError('帧数据为空');
+    setTimestamps(stored);
+    getVideoMeta(videoId)
+      .then((meta) => {
+        setVideoUrl(meta.url);
+        setMetadataDuration(meta.duration_ms);
+      })
+      .catch(() => {
+        setError('视频元数据加载失败');
         setLoading(false);
-      }
-    } catch {
-      setError('帧数据解析失败');
-      setLoading(false);
-    }
+      });
   }, [videoId]);
 
   const generateThumbnails = useCallback(async () => {
     if (timestamps.length === 0) return;
 
-    const video = videoRef.current;
-    if (!video || !video.duration) return;
-
     const generated: Frame[] = [];
     for (const ts of timestamps) {
       try {
-        const dataUrl = await captureThumbnail(ts);
-        generated.push({ ts_ms: ts, thumb_dataurl: dataUrl });
+        const dataUrl = await captureFrameAt(ts);
+        generated.push({ ts_ms: ts, thumb_dataurl: dataUrl ?? '' });
       } catch {
         generated.push({ ts_ms: ts, thumb_dataurl: '' });
       }
     }
     setFrames(generated);
     setLoading(false);
-  }, [timestamps, captureThumbnail]);
+  }, [timestamps, captureFrameAt]);
 
   useEffect(() => {
-    if (timestamps.length > 0 && videoRef.current) {
-      const video = videoRef.current;
-      const onReady = () => {
-        generateThumbnails();
-      };
-      if (video.readyState >= 1) {
-        generateThumbnails();
-      } else {
-        video.addEventListener('loadedmetadata', onReady, { once: true });
-      }
+    if (timestamps.length > 0 && isReady) {
+      void generateThumbnails();
     }
-  }, [timestamps, generateThumbnails]);
+  }, [timestamps, isReady, generateThumbnails]);
 
   const handleDelete = useCallback((index: number) => {
     setFrames(prev => prev.filter((_, i) => i !== index));
-    setTimestamps(prev => prev.filter((_, i) => i !== index));
-  }, []);
+    setTimestamps(prev => {
+      const next = prev.filter((_, i) => i !== index);
+      if (videoId) setFrameTimestamps(videoId, next);
+      return next;
+    });
+  }, [videoId]);
 
   const handleClear = useCallback(() => {
     setFrames([]);
     setTimestamps([]);
-  }, []);
+    if (videoId) setFrameTimestamps(videoId, []);
+  }, [videoId]);
 
   const handleContinue = useCallback(() => {
     if (frames.length === 0) {
@@ -120,12 +89,26 @@ export default function Frames() {
       return;
     }
 
-    sessionStorage.setItem(`frames_${videoId}`, JSON.stringify(timestamps));
+    if (!videoId) return;
+
+    setFrameTimestamps(videoId, timestamps);
     navigate(`/process/${videoId}`);
   }, [frames, timestamps, videoId, navigate]);
 
   const handleBack = useCallback(() => {
     navigate(`/capture/${videoId}`);
+  }, [videoId, navigate]);
+
+  const handleReupload = useCallback(async () => {
+    if (videoId) {
+      clearWorkflow(videoId);
+      try {
+        await deleteVideo(videoId);
+      } catch {
+        // The server upload may already be gone; navigating home still resets the UI.
+      }
+    }
+    navigate('/');
   }, [videoId, navigate]);
 
   const formatTime = (ms: number) => {
@@ -138,7 +121,15 @@ export default function Frames() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <h2 className="text-3xl font-bold mb-8">关键帧列表</h2>
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-3xl font-bold">关键帧列表</h2>
+        <button
+          onClick={handleReupload}
+          className="self-start rounded bg-gray-700 px-4 py-2 text-sm font-medium hover:bg-gray-600 sm:self-auto"
+        >
+          重新上传视频
+        </button>
+      </div>
 
       <video
         ref={videoRef}
@@ -168,6 +159,12 @@ export default function Frames() {
             className="mt-4 px-6 py-2 bg-blue-600 rounded hover:bg-blue-500"
           >
             返回截取
+          </button>
+          <button
+            onClick={handleReupload}
+            className="ml-4 mt-4 px-6 py-2 bg-gray-700 rounded hover:bg-gray-600"
+          >
+            重新上传视频
           </button>
         </div>
       ) : (

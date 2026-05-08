@@ -43,3 +43,6 @@ docs/
 
 # Local settings
 .claude/
+.trae/
+AGENTS.md
+mvp.md

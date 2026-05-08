@@ -8,13 +8,12 @@ export interface VideoUploadResponse {
 }
 
 export interface VideoMeta {
-  id: string;
-  filename: string;
+  video_id: string;
   duration_ms: number;
   fps: number;
   width: number;
   height: number;
-  created_at: string;
+  url: string;
 }
 
 export interface CreateJobRequest {
@@ -51,6 +50,7 @@ export interface JobStatus {
   result?: {
     spritesheet_url: string;
     json_url: string;
+    frame_urls?: string[];
   };
 }
 
@@ -125,6 +125,12 @@ export async function getJobStatus(jobId: string): Promise<JobStatus> {
 
 export async function deleteJob(jobId: string): Promise<void> {
   await request(`/api/jobs/${jobId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function deleteVideo(videoId: string): Promise<void> {
+  await request(`/api/videos/${videoId}`, {
     method: 'DELETE',
   });
 }

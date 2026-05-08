@@ -1,23 +1,21 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import Upload from './pages/Upload';
-import Capture from './pages/Capture';
-import Frames from './pages/Frames';
-import Process from './pages/Process';
-import Result from './pages/Result';
+import Workflow from './pages/Workflow';
 
 function App() {
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      <header className="bg-gray-800 p-4">
-        <h1 className="text-2xl font-bold">Sprite Forge</h1>
+      <header className="bg-gray-800 px-4 py-4">
+        <div className="mx-auto w-full max-w-[1180px]">
+          <h1 className="text-2xl font-bold">Sprite Forge</h1>
+        </div>
       </header>
-      <main className="container mx-auto p-4">
+      <main className="mx-auto w-full max-w-[1180px] px-4 py-6">
         <Routes>
-          <Route path="/" element={<Upload />} />
-          <Route path="/capture/:videoId" element={<Capture />} />
-          <Route path="/frames/:videoId" element={<Frames />} />
-          <Route path="/process/:videoId" element={<Process />} />
-          <Route path="/result/:jobId" element={<Result />} />
+          <Route path="/" element={<Workflow />} />
+          <Route path="/capture/:videoId" element={<Navigate to="/" replace />} />
+          <Route path="/frames/:videoId" element={<Navigate to="/" replace />} />
+          <Route path="/process/:videoId" element={<Navigate to="/" replace />} />
+          <Route path="/result/:jobId" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

@@ -2,12 +2,13 @@ import asyncio
 import json
 from pathlib import Path
 from typing import Optional, Callable, Awaitable
+from PIL import Image
 
 from .models import JobStatus, JobProgress, CreateJobRequest
 from . import store
 from .media.extract import extract_frame
 from .media.inpaint import build_mask, inpaint_frame
-from .media.remove_bg import remove_background
+from .media.remove_bg import remove_background, preload_model
 from .media.pack import pack_grid
 
 
@@ -45,7 +46,7 @@ async def process_job(
                     message=f"截帧 {i + 1}/{total}",
                 ))
 
-            frame = extract_frame(video_path, ts)
+            frame = await asyncio.to_thread(extract_frame, video_path, ts)
             frames.append(frame)
 
             store.update_job(job_id, progress=progress, stage="extract")
@@ -66,7 +67,7 @@ async def process_job(
             processed_frames = []
             for i, frame in enumerate(frames):
                 progress = (i + 0.5) / total
-                inpainted = inpaint_frame(frame, mask)
+                inpainted = await asyncio.to_thread(inpaint_frame, frame, mask)
                 processed_frames.append(inpainted)
                 store.update_job(job_id, progress=progress, stage="inpaint")
             frames = processed_frames
@@ -77,8 +78,10 @@ async def process_job(
                 await on_progress(JobProgress(
                     stage="rembg",
                     progress=0.0,
-                    message="去除背景...",
+                    message="加载去背景模型...",
                 ))
+
+            await asyncio.to_thread(preload_model)
 
             processed_frames = []
             for i, frame in enumerate(frames):
@@ -89,7 +92,7 @@ async def process_job(
                         progress=progress,
                         message=f"去背景 {i + 1}/{total}",
                     ))
-                rgba_frame = remove_background(frame)
+                rgba_frame = await asyncio.to_thread(remove_background, frame)
                 processed_frames.append(rgba_frame)
                 store.update_job(job_id, progress=progress, stage="rembg")
             frames = processed_frames
@@ -111,10 +114,16 @@ async def process_job(
         sheet_path = job_dir / "spritesheet.png"
         sheet.save(str(sheet_path))
 
+        frame_urls = []
         for i, frame in enumerate(frames):
-            if hasattr(frame, 'mode') and frame.mode == 'RGBA':
-                frame_path = frames_dir / f"{i:04d}.png"
+            frame_path = frames_dir / f"{i:04d}.png"
+            if frame.ndim == 3 and frame.shape[2] == 4:
+                Image.fromarray(frame, "RGBA").save(str(frame_path))
+            elif frame.ndim == 3 and frame.shape[2] == 3:
+                Image.fromarray(frame, "RGB").save(str(frame_path))
+            else:
                 Image.fromarray(frame).save(str(frame_path))
+            frame_urls.append(f"/files/jobs/{job_id}/frames/{i:04d}.png")
 
         meta_path = job_dir / "spritesheet.json"
         with open(meta_path, "w", encoding="utf-8") as f:
@@ -123,6 +132,7 @@ async def process_job(
         result = {
             "spritesheet_url": f"/files/jobs/{job_id}/spritesheet.png",
             "json_url": f"/files/jobs/{job_id}/spritesheet.json",
+            "frame_urls": frame_urls,
         }
 
         store.update_job(
@@ -159,6 +169,3 @@ async def process_job(
             ))
 
         raise
-
-
-from PIL import Image

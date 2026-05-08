@@ -1,54 +1,87 @@
 import subprocess
-import tempfile
+import uuid
+import json
 from pathlib import Path
 from typing import Optional
 import numpy as np
 import cv2
+from PIL import Image
+
+from .. import store
+
+
+def _try_ffmpeg(video_path: Path, args: list[str], tmp_path: Path) -> subprocess.CompletedProcess:
+    cmd = ["ffmpeg", "-y"] + args + [str(tmp_path)]
+    return subprocess.run(cmd, capture_output=True, timeout=30)
+
+
+def _has_valid_output(path: Path) -> bool:
+    return path.exists() and path.stat().st_size > 100
+
+
+def _extract_with_fallbacks(video_path: Path, timestamp_sec: float, tmp_path: Path) -> subprocess.CompletedProcess:
+    strategies = [
+        ["-ss", str(timestamp_sec), "-i", str(video_path), "-frames:v", "1"],
+        ["-i", str(video_path), "-ss", str(timestamp_sec), "-frames:v", "1"],
+    ]
+
+    if timestamp_sec > 0.1:
+        reduced = timestamp_sec - 0.1
+        strategies.append(["-ss", str(reduced), "-i", str(video_path), "-frames:v", "1"])
+        strategies.append(["-i", str(video_path), "-ss", str(reduced), "-frames:v", "1"])
+
+    strategies.append(["-i", str(video_path), "-frames:v", "1"])
+
+    last_result = None
+    for args in strategies:
+        tmp_path.unlink(missing_ok=True)
+        result = _try_ffmpeg(video_path, args, tmp_path)
+        if _has_valid_output(tmp_path):
+            return result
+        last_result = result
+
+    return last_result
 
 
 def extract_frame(
     video_path: Path,
-    timestamp_ms: int,
+    timestamp_ms: float,
     output_path: Optional[Path] = None,
 ) -> np.ndarray:
     timestamp_sec = timestamp_ms / 1000.0
 
-    tmp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-    tmp_path = tmp_file.name
-    tmp_file.close()
+    tmp_dir = store.DATA_DIR / "tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = tmp_dir / f"_frame_{uuid.uuid4().hex[:8]}.png"
 
     try:
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-i", str(video_path),
-            "-ss", str(timestamp_sec),
-            "-frames:v", "1",
-            "-pix_fmt", "rgb24",
-            tmp_path,
-        ]
+        result = _extract_with_fallbacks(video_path, timestamp_sec, tmp_path)
 
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            timeout=30,
-        )
-
-        if result.returncode != 0 or not Path(tmp_path).exists():
+        if not _has_valid_output(tmp_path):
+            stderr_tail = result.stderr.decode()[-300:] if result else "no result"
             raise RuntimeError(
-                f"ffmpeg 截帧失败 (ts={timestamp_ms}ms): {result.stderr.decode()[-300:]}"
+                f"ffmpeg 截帧失败 (ts={timestamp_ms}ms): {stderr_tail}"
             )
 
-        frame = cv2.imread(tmp_path, cv2.IMREAD_COLOR)
+        frame = cv2.imread(str(tmp_path), cv2.IMREAD_COLOR)
+
         if frame is None:
-            raise RuntimeError(f"无法解码帧数据 (ts={timestamp_ms}ms)")
+            try:
+                pil_img = Image.open(str(tmp_path)).convert("RGB")
+                frame = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+            except Exception as pil_err:
+                file_size = tmp_path.stat().st_size
+                raise RuntimeError(
+                    f"无法解码帧数据 (ts={timestamp_ms}ms, 大小={file_size}B, "
+                    f"cv2=None, pil={pil_err}, 路径={tmp_path})"
+                )
 
         if output_path:
             cv2.imwrite(str(output_path), frame)
 
         return frame
     finally:
-        Path(tmp_path).unlink(missing_ok=True)
+        tmp_path.unlink(missing_ok=True)
 
 
 def get_video_info(video_path: Path) -> dict:
@@ -60,35 +93,29 @@ def get_video_info(video_path: Path) -> dict:
         "-show_streams",
         str(video_path),
     ]
-    
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        check=True,
-        timeout=30,
-    )
-    
-    import json
+
+    result = subprocess.run(cmd, capture_output=True, check=True, timeout=30)
+
     data = json.loads(result.stdout)
-    
+
     video_stream = None
     for stream in data.get("streams", []):
         if stream.get("codec_type") == "video":
             video_stream = stream
             break
-    
+
     if not video_stream:
         raise RuntimeError("未找到视频流")
-    
+
     fps_str = video_stream.get("r_frame_rate", "30/1")
     if "/" in fps_str:
         num, den = fps_str.split("/")
         fps = float(num) / float(den)
     else:
         fps = float(fps_str)
-    
+
     duration_ms = float(data.get("format", {}).get("duration", 0)) * 1000
-    
+
     return {
         "width": int(video_stream.get("width", 0)),
         "height": int(video_stream.get("height", 0)),

@@ -9,43 +9,71 @@ interface TimelineProps {
 export default function Timeline({ currentTime, duration, onSeek }: TimelineProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const canSeek = duration > 0 && Number.isFinite(duration);
 
-  const handleSeek = useCallback((clientX: number) => {
+  const calcTimeFromClientX = useCallback((clientX: number) => {
     const track = trackRef.current;
-    if (!track || duration <= 0) return;
+    if (!track || !canSeek) return null;
 
     const rect = track.getBoundingClientRect();
+    if (rect.width <= 0) return null;
+
     const x = clientX - rect.left;
     const percentage = Math.max(0, Math.min(1, x / rect.width));
-    const timeMs = percentage * duration;
-    onSeek(timeMs);
-  }, [duration, onSeek]);
+    return percentage * duration;
+  }, [canSeek, duration]);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  const handleStart = useCallback((clientX: number) => {
+    const timeMs = calcTimeFromClientX(clientX);
+    if (timeMs === null) return;
     setIsDragging(true);
-    handleSeek(e.clientX);
-  }, [handleSeek]);
+    onSeek(timeMs);
+  }, [calcTimeFromClientX, onSeek]);
 
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (isDragging) {
-      handleSeek(e.clientX);
-    }
-  }, [isDragging, handleSeek]);
+  const handleMove = useCallback((clientX: number) => {
+    if (!isDragging) return;
+    const timeMs = calcTimeFromClientX(clientX);
+    if (timeMs === null) return;
+    onSeek(timeMs);
+  }, [isDragging, calcTimeFromClientX, onSeek]);
 
-  const handleMouseUp = useCallback(() => {
+  const handleEnd = useCallback(() => {
     setIsDragging(false);
   }, []);
 
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    handleStart(e.clientX);
+  }, [handleStart]);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    handleStart(e.touches[0].clientX);
+  }, [handleStart]);
+
   useEffect(() => {
-    if (isDragging) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-    }
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+    if (!isDragging) return;
+
+    const onMouseMove = (e: MouseEvent) => handleMove(e.clientX);
+    const onTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      handleMove(e.touches[0].clientX);
     };
-  }, [isDragging, handleMouseMove, handleMouseUp]);
+    const onMouseUp = () => handleEnd();
+    const onTouchEnd = () => handleEnd();
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('touchend', onTouchEnd);
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [isDragging, handleMove, handleEnd]);
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -57,7 +85,7 @@ export default function Timeline({ currentTime, duration, onSeek }: TimelineProp
   };
 
   return (
-    <div className="relative py-4">
+    <div className="relative py-4 select-none">
       <div className="flex justify-between text-sm text-gray-400 mb-2">
         <span>{formatTime(currentTime)}</span>
         <span>{formatTime(duration)}</span>
@@ -65,15 +93,18 @@ export default function Timeline({ currentTime, duration, onSeek }: TimelineProp
       
       <div
         ref={trackRef}
-        className="relative h-3 bg-gray-700 rounded-full cursor-pointer"
+        className={`relative h-3 rounded-full touch-none ${
+          canSeek ? 'cursor-pointer bg-gray-700' : 'cursor-not-allowed bg-gray-800'
+        }`}
         onMouseDown={handleMouseDown}
+        onTouchStart={handleTouchStart}
       >
         <div
-          className="absolute h-full bg-blue-500 rounded-full"
+          className="absolute h-full bg-blue-500 rounded-full pointer-events-none"
           style={{ width: `${progress}%` }}
         />
         <div
-          className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg"
+          className="absolute top-1/2 w-4 h-4 bg-white rounded-full shadow-lg pointer-events-none"
           style={{ left: `${progress}%`, transform: `translate(-50%, -50%)` }}
         />
       </div>
@@ -83,7 +114,6 @@ export default function Timeline({ currentTime, duration, onSeek }: TimelineProp
           <div
             key={i}
             className="w-0.5 h-2 bg-gray-600"
-            style={{ marginLeft: i === 0 ? 0 : undefined }}
           />
         ))}
       </div>

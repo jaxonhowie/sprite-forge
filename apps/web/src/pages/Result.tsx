@@ -1,6 +1,8 @@
 import { useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
+import { deleteVideo } from '../api/client';
+import { clearWorkflow } from '../utils/workflowState';
 
 interface JobResult {
   id: string;
@@ -12,6 +14,7 @@ interface JobResult {
   result: {
     spritesheet_url: string;
     json_url: string;
+    frame_urls?: string[];
   } | null;
 }
 
@@ -54,9 +57,17 @@ export default function Result() {
     }
   }, [jobId]);
 
-  const handleNewProject = useCallback(() => {
+  const handleNewProject = useCallback(async () => {
+    if (job?.video_id) {
+      clearWorkflow(job.video_id);
+      try {
+        await deleteVideo(job.video_id);
+      } catch {
+        // Finished result cleanup should not block returning to upload.
+      }
+    }
     navigate('/');
-  }, [navigate]);
+  }, [job?.video_id, navigate]);
 
   if (isLoading) {
     return (

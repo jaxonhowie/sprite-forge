@@ -1,9 +1,5 @@
 import asyncio
-import json
 import shutil
-import tempfile
-from pathlib import Path
-from typing import Optional
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
@@ -38,6 +34,12 @@ MAX_FILE_SIZE = 500 * 1024 * 1024
 active_jobs: dict[str, asyncio.Task] = {}
 
 
+def get_source_suffix(content_type: str) -> str:
+    if content_type == "video/webm":
+        return ".webm"
+    return ".mp4"
+
+
 @app.post("/api/videos", response_model=VideoUploadResponse)
 async def upload_video(file: UploadFile = File(...)):
     if not file.content_type or not file.content_type.startswith("video/"):
@@ -51,7 +53,7 @@ async def upload_video(file: UploadFile = File(...)):
     video_dir = store.UPLOADS_DIR / video_id
     video_dir.mkdir(parents=True, exist_ok=True)
 
-    source_path = video_dir / "source.mp4"
+    source_path = video_dir / f"source{get_source_suffix(file.content_type)}"
     with open(source_path, "wb") as f:
         f.write(content)
 
@@ -76,7 +78,7 @@ async def upload_video(file: UploadFile = File(...)):
         fps=meta.fps,
         width=meta.width,
         height=meta.height,
-        url=f"/files/uploads/{meta.id}/source.mp4",
+        url=f"/api/videos/{meta.id}/source",
     )
 
 
@@ -92,8 +94,25 @@ async def get_video(video_id: str):
         fps=meta.fps,
         width=meta.width,
         height=meta.height,
-        url=f"/files/uploads/{meta.id}/source.mp4",
+        url=f"/api/videos/{meta.id}/source",
     )
+
+
+@app.get("/api/videos/{video_id}/source")
+async def get_video_source(video_id: str):
+    video_path = store.get_video_path(video_id)
+    if not video_path:
+        raise HTTPException(404, "视频不存在")
+
+    return FileResponse(video_path)
+
+
+@app.delete("/api/videos/{video_id}")
+async def delete_video(video_id: str):
+    success = store.delete_video(video_id)
+    if not success:
+        raise HTTPException(404, "视频不存在")
+    return {"message": "删除成功"}
 
 
 @app.post("/api/jobs", response_model=JobResponse)
@@ -136,7 +155,7 @@ async def delete_job(job_id: str):
 
 
 @app.get("/api/jobs/{job_id}/export.zip")
-async def export_job(job_id: str):
+async def export_job(job_id: str, background_tasks: BackgroundTasks):
     job = store.get_job(job_id)
     if not job:
         raise HTTPException(404, "任务不存在")
@@ -151,10 +170,11 @@ async def export_job(job_id: str):
     if not sheet_path.exists() or not meta_path.exists():
         raise HTTPException(400, "精灵表尚未生成")
 
-    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-        zip_path = Path(tmp.name)
-
+    zip_path = store.TMP_DIR / f"{job_id}_export.zip"
+    zip_path.unlink(missing_ok=True)
     shutil.make_archive(str(zip_path.with_suffix("")), "zip", job_dir)
+
+    background_tasks.add_task(zip_path.unlink, missing_ok=True)
 
     return FileResponse(
         zip_path,
@@ -218,6 +238,7 @@ app.mount("/files", StaticFiles(directory=str(store.DATA_DIR)), name="files")
 @app.on_event("startup")
 async def startup():
     store.ensure_dirs()
+    store.cleanup_tmp_dir()
 
 
 if __name__ == "__main__":

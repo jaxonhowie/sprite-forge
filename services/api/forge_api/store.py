@@ -11,11 +11,26 @@ from .models import VideoMeta, JobStatus, JobStatusResponse, CreateJobRequest
 DATA_DIR = Path(__file__).parent.parent.parent.parent / "data"
 UPLOADS_DIR = DATA_DIR / "uploads"
 JOBS_DIR = DATA_DIR / "jobs"
+TMP_DIR = DATA_DIR / "tmp"
 
 
 def ensure_dirs():
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
+    TMP_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def cleanup_tmp_dir():
+    import shutil
+
+    if not TMP_DIR.exists():
+        return
+
+    for path in TMP_DIR.iterdir():
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            path.unlink(missing_ok=True)
 
 
 def generate_id() -> str:
@@ -60,10 +75,12 @@ def get_video_meta(video_id: str) -> Optional[VideoMeta]:
 
 
 def get_video_path(video_id: str) -> Optional[Path]:
-    video_path = UPLOADS_DIR / video_id / "source.mp4"
-    if not video_path.exists():
-        return None
-    return video_path
+    video_dir = UPLOADS_DIR / video_id
+    for filename in ("source.mp4", "source.webm"):
+        video_path = video_dir / filename
+        if video_path.exists():
+            return video_path
+    return None
 
 
 def create_job(
@@ -164,6 +181,24 @@ def delete_job(job_id: str) -> bool:
         return False
 
     shutil.rmtree(job_dir)
+    return True
+
+
+def delete_video(video_id: str) -> bool:
+    import shutil
+
+    video_dir = UPLOADS_DIR / video_id
+    if not video_dir.exists():
+        return False
+
+    shutil.rmtree(video_dir)
+
+    for job in list_jobs():
+        if job.video_id == video_id:
+            job_dir = JOBS_DIR / job.id
+            if job_dir.exists():
+                shutil.rmtree(job_dir)
+
     return True
 
 
