@@ -27,6 +27,12 @@ export interface WorkflowState {
   jobId?: string;
 }
 
+export interface WorkflowRouteState {
+  videoMeta?: VideoMeta;
+  frameTimestamps?: number[];
+  jobId?: string;
+}
+
 const workflowKey = 'sprite_forge_workflow';
 const frameKey = (videoId: string) => `frames_${videoId}`;
 
@@ -47,6 +53,14 @@ export function createInitialWorkflowState(): WorkflowState {
     frameTimestamps: [],
     frameThumbs: {},
     processSettings: defaultWorkflowSettings,
+  };
+}
+
+export function createWorkflowRouteState(state: WorkflowRouteState = {}): WorkflowRouteState {
+  return {
+    videoMeta: state.videoMeta,
+    frameTimestamps: state.frameTimestamps ? [...state.frameTimestamps] : undefined,
+    jobId: state.jobId,
   };
 }
 
@@ -79,12 +93,26 @@ export function getWorkflowState(): WorkflowState | null {
 }
 
 export function setWorkflowState(state: WorkflowState): void {
-  const persistedState: WorkflowState = {
-    ...state,
-    frameThumbs: {},
+  sessionStorage.setItem(workflowKey, JSON.stringify(state));
+}
+
+export function mergeWorkflowState(patch: Partial<WorkflowState>): WorkflowState {
+  const current = getWorkflowState() ?? createInitialWorkflowState();
+  const next: WorkflowState = {
+    ...current,
+    ...patch,
+    processSettings: {
+      ...current.processSettings,
+      ...(patch.processSettings ?? {}),
+      layout: {
+        ...current.processSettings.layout,
+        ...(patch.processSettings?.layout ?? {}),
+      },
+    },
   };
 
-  sessionStorage.setItem(workflowKey, JSON.stringify(persistedState));
+  setWorkflowState(next);
+  return next;
 }
 
 export function getFrameTimestamps(videoId: string): number[] | null {
@@ -111,6 +139,7 @@ export function getFrameTimestamps(videoId: string): number[] | null {
 
 export function setFrameTimestamps(videoId: string, timestamps: number[]): void {
   sessionStorage.setItem(frameKey(videoId), JSON.stringify(timestamps));
+  mergeWorkflowState({ frameTimestamps: timestamps });
 }
 
 export function clearWorkflow(videoId?: string): void {

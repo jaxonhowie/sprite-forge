@@ -4,9 +4,10 @@ interface TimelineProps {
   currentTime: number;
   duration: number;
   onSeek: (timeMs: number) => void;
+  markers?: number[];
 }
 
-export default function Timeline({ currentTime, duration, onSeek }: TimelineProps) {
+export default function Timeline({ currentTime, duration, onSeek, markers = [] }: TimelineProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const canSeek = duration > 0 && Number.isFinite(duration);
@@ -76,6 +77,13 @@ export default function Timeline({ currentTime, duration, onSeek }: TimelineProp
   }, [isDragging, handleMove, handleEnd]);
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const normalizedMarkers = markers
+    .filter((timeMs) => Number.isFinite(timeMs) && timeMs >= 0 && timeMs <= duration)
+    .map((timeMs, index) => ({
+      id: `${timeMs}-${index}`,
+      left: duration > 0 ? (timeMs / duration) * 100 : 0,
+      timeMs,
+    }));
 
   const formatTime = (ms: number) => {
     const seconds = Math.floor(ms / 1000);
@@ -85,35 +93,49 @@ export default function Timeline({ currentTime, duration, onSeek }: TimelineProp
   };
 
   return (
-    <div className="relative py-4 select-none">
-      <div className="flex justify-between text-sm text-gray-400 mb-2">
+    <div className="relative select-none py-4">
+      <div className="mb-2 flex justify-between text-sm text-gray-400">
         <span>{formatTime(currentTime)}</span>
         <span>{formatTime(duration)}</span>
       </div>
-      
+
       <div
         ref={trackRef}
-        className={`relative h-3 rounded-full touch-none ${
-          canSeek ? 'cursor-pointer bg-gray-700' : 'cursor-not-allowed bg-gray-800'
+        className={`relative h-2 rounded-full touch-none ${
+          canSeek ? 'cursor-pointer bg-gray-200' : 'cursor-not-allowed bg-gray-100'
         }`}
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
       >
         <div
-          className="absolute h-full bg-blue-500 rounded-full pointer-events-none"
+          className="absolute h-full rounded-full bg-gray-900"
           style={{ width: `${progress}%` }}
         />
         <div
-          className="absolute top-1/2 w-4 h-4 bg-white rounded-full shadow-lg pointer-events-none"
+          className="absolute top-1/2 h-4 w-4 rounded-full bg-gray-900 shadow-sm"
           style={{ left: `${progress}%`, transform: `translate(-50%, -50%)` }}
         />
+        {normalizedMarkers.map((marker) => (
+          <button
+            key={marker.id}
+            type="button"
+            title={formatTime(marker.timeMs)}
+            aria-label={`跳转到 ${formatTime(marker.timeMs)}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSeek(marker.timeMs);
+            }}
+            className="absolute top-1/2 h-3 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-yellow-400 shadow-sm"
+            style={{ left: `${marker.left}%` }}
+          />
+        ))}
       </div>
 
-      <div className="absolute left-0 right-0 bottom-0 flex justify-between px-1">
+      <div className="absolute bottom-0 left-0 right-0 flex justify-between px-1">
         {Array.from({ length: 11 }).map((_, i) => (
           <div
             key={i}
-            className="w-0.5 h-2 bg-gray-600"
+            className="h-1.5 w-0.5 rounded-full bg-gray-200"
           />
         ))}
       </div>

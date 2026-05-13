@@ -25,7 +25,7 @@ export default function BoxSelector({ imageUrl, onBoxChange }: BoxSelectorProps)
     const rect = container.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
-    
+
     return {
       x: Math.max(0, Math.min(x, rect.width)),
       y: Math.max(0, Math.min(y, rect.height)),
@@ -85,7 +85,7 @@ export default function BoxSelector({ imageUrl, onBoxChange }: BoxSelectorProps)
     <div className="relative">
       <div
         ref={containerRef}
-        className="relative inline-block cursor-crosshair"
+        className="relative inline-block cursor-crosshair overflow-hidden rounded-lg border border-gray-200"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -94,13 +94,13 @@ export default function BoxSelector({ imageUrl, onBoxChange }: BoxSelectorProps)
         <img
           src={imageUrl}
           alt="选择水印区域"
-          className="max-w-full h-auto select-none pointer-events-none"
+          className="pointer-events-none h-auto max-w-full select-none"
           draggable={false}
         />
-        
+
         {box && (
           <div
-            className="absolute border-2 border-red-500 bg-red-500/30"
+            className="absolute border-2 border-red-500 bg-red-500/20"
             style={{
               left: box.x,
               top: box.y,
@@ -108,7 +108,7 @@ export default function BoxSelector({ imageUrl, onBoxChange }: BoxSelectorProps)
               height: box.h,
             }}
           >
-            <div className="absolute -top-6 left-0 text-xs text-red-400 bg-black/70 px-1">
+            <div className="absolute -top-6 left-0 rounded bg-white px-1.5 py-0.5 text-xs text-red-500 shadow-sm">
               水印区域
             </div>
           </div>
@@ -118,11 +118,11 @@ export default function BoxSelector({ imageUrl, onBoxChange }: BoxSelectorProps)
       {box && (
         <div className="mt-2 flex items-center gap-4">
           <span className="text-sm text-gray-400">
-            区域: {Math.round(box.x)}, {Math.round(box.y)} - {Math.round(box.w)}×{Math.round(box.h)}
+            区域: {Math.round(box.x)}, {Math.round(box.y)} - {Math.round(box.w)}&times;{Math.round(box.h)}
           </span>
           <button
             onClick={handleClear}
-            className="text-sm text-red-400 hover:text-red-300"
+            className="text-sm text-red-400 hover:text-red-600"
           >
             清除选区
           </button>

@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BoxSelector from '../components/BoxSelector';
 import {
+  ApiError,
   createJob,
   deleteJob,
   deleteVideo,
+  extractVideoFrames,
   getJobExportUrl,
   getJobStatus,
   uploadVideo,
+  type EngineExportTarget,
   type JobStatus,
   type VideoMeta,
 } from '../api/client';
@@ -23,6 +26,12 @@ import {
 } from '../utils/workflowState';
 
 type CaptureMode = 'count' | 'step';
+type EnginePackageTarget = Exclude<EngineExportTarget, 'generic'>;
+
+const engineExportOptions: Array<{ target: EnginePackageTarget; label: string; button: string }> = [
+  { target: 'cocos', label: 'Cocos Creator', button: '下载 Cocos Creator 包' },
+  { target: 'unity', label: 'Unity3D', button: '下载 Unity3D 包' },
+];
 
 interface StepItem {
   id: WorkflowStep;
@@ -122,6 +131,7 @@ export default function Workflow() {
   const [previewFrame, setPreviewFrame] = useState<{ src: string; label: string } | null>(null);
   const [isPlayingFrames, setIsPlayingFrames] = useState(false);
   const [playingFrameIndex, setPlayingFrameIndex] = useState(0);
+  const [engineExportTarget, setEngineExportTarget] = useState<EnginePackageTarget>('cocos');
   const [error, setError] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -133,6 +143,8 @@ export default function Workflow() {
     timestamp,
     thumb: workflow.frameThumbs[String(timestamp)],
   }));
+  const selectedExportOption =
+    engineExportOptions.find((option) => option.target === engineExportTarget) ?? engineExportOptions[0];
 
   const {
     videoRef,
@@ -298,7 +310,20 @@ export default function Workflow() {
           openJobSocket(workflow.jobId as string);
         }
       })
-      .catch(() => setError('任务状态加载失败'));
+      .catch((err: unknown) => {
+        if (err instanceof ApiError && err.status === 404) {
+          updateWorkflow((current) => ({
+            ...current,
+            currentStep: 'settings',
+            jobId: undefined,
+          }));
+          setJobStatus(null);
+          setIsProcessing(false);
+          return;
+        }
+
+        setError('任务状态加载失败');
+      });
   }, [isProcessing, openJobSocket, workflow.currentStep, workflow.jobId]);
 
   const canOpenStep = useCallback((step: WorkflowStep) => {
@@ -376,8 +401,8 @@ export default function Workflow() {
   }, [handleUpload]);
 
   const handleCaptureFrames = useCallback(async () => {
-    if (!videoMeta || !isReady) {
-      setError('视频尚未加载完成');
+    if (!videoMeta) {
+      setError('请先上传视频');
       return;
     }
 
@@ -394,18 +419,16 @@ export default function Workflow() {
     resetDownstreamFromCapture();
     setError(null);
     setIsCapturing(true);
-    setCaptureProgress(0);
+    setCaptureProgress(5);
 
     try {
-      const thumbs: Record<string, string> = {};
-      for (let index = 0; index < timestamps.length; index += 1) {
-        const timestamp = timestamps[index];
-        const dataUrl = await captureFrameAt(timestamp);
-        if (dataUrl) {
-          thumbs[String(timestamp)] = dataUrl;
-        }
-        setCaptureProgress(Math.round(((index + 1) / timestamps.length) * 100));
-      }
+      const response = await extractVideoFrames(videoMeta.video_id, timestamps);
+      setCaptureProgress(100);
+
+      const thumbs = response.frames.reduce<Record<string, string>>((result, frame) => {
+        result[String(frame.ts_ms)] = frame.url;
+        return result;
+      }, {});
 
       setFrameTimestamps(videoMeta.video_id, timestamps);
       updateWorkflow((current) => ({
@@ -430,10 +453,8 @@ export default function Workflow() {
       setIsCapturing(false);
     }
   }, [
-    captureFrameAt,
     captureMode,
     frameCount,
-    isReady,
     resetDownstreamFromCapture,
     stepMs,
     updateWorkflow,
@@ -522,18 +543,18 @@ export default function Workflow() {
     }
   }, [openJobSocket, settings, updateWorkflow, videoMeta, workflow.frameTimestamps]);
 
-  const handleDownloadZip = useCallback(async () => {
+  const handleDownloadZip = useCallback(async (target: EngineExportTarget) => {
     if (!workflow.jobId) return;
 
     try {
-      const response = await fetch(getJobExportUrl(workflow.jobId));
+      const response = await fetch(getJobExportUrl(workflow.jobId, target));
       if (!response.ok) throw new Error('下载失败');
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `spritesheet_${workflow.jobId}.zip`;
+      link.download = `spritesheet_${workflow.jobId}_${target}.zip`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -582,26 +603,26 @@ export default function Workflow() {
     <div className="mx-auto w-full">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-bold">视频转精灵表工作台</h2>
-          <p className="mt-1 text-sm text-gray-400">上传、截帧、处理和导出都在当前页面完成。</p>
+          <h2 className="text-2xl font-bold text-gray-900">视频转精灵表工作台</h2>
+          <p className="mt-1 text-sm text-gray-500">上传、截帧、处理和导出都在当前页面完成。</p>
         </div>
         <button
           onClick={() => void handleNewProject()}
           disabled={!videoMeta || isUploading || isCapturing || isProcessing}
-          className="self-start rounded bg-gray-700 px-4 py-2 text-sm font-medium hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
+          className="self-start rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
         >
           新项目
         </button>
       </div>
 
       {error && (
-        <div className="mb-6 rounded border border-red-500 bg-red-500/20 p-4 text-red-300">
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
           {error}
         </div>
       )}
 
       <div className="grid items-start justify-center gap-6 lg:grid-cols-[220px_936px]">
-        <aside className="h-auto rounded-lg bg-gray-800 p-4 lg:h-[760px]">
+        <aside className="h-auto rounded-xl border border-gray-200 bg-white p-4 lg:h-[760px]">
           <div className="flex gap-2 overflow-x-auto lg:block lg:space-y-2">
             {steps.map((step, index) => {
               const isActive = step.id === workflow.currentStep;
@@ -613,26 +634,26 @@ export default function Workflow() {
                   key={step.id}
                   onClick={() => handleStepClick(step.id)}
                   disabled={!isEnabled || isUploading || isCapturing || isProcessing}
-                  className={`min-w-44 rounded p-3 text-left transition-colors lg:w-full ${
+                  className={`min-w-44 rounded-lg p-3 text-left transition-all lg:w-full ${
                     isActive
-                      ? 'bg-blue-600 text-white'
+                      ? 'bg-gray-900 text-white shadow-sm'
                       : isDone
-                        ? 'bg-gray-700 text-gray-100 hover:bg-gray-600'
-                        : 'bg-gray-900 text-gray-400'
+                        ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        : 'bg-gray-50 text-gray-400'
                   } disabled:cursor-not-allowed disabled:opacity-60`}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-sm font-semibold">{index + 1}. {step.label}</span>
-                    {isDone && <span className="text-xs text-green-300">完成</span>}
+                    {isDone && <span className="text-xs text-green-600">完成</span>}
                   </div>
-                  <div className="mt-1 text-xs opacity-80">{step.description}</div>
+                  <div className="mt-1 text-xs opacity-70">{step.description}</div>
                 </button>
               );
             })}
           </div>
         </aside>
 
-        <section className="min-w-0 rounded-lg bg-gray-800 p-6 lg:h-[760px] lg:overflow-y-auto">
+        <section className="min-w-0 rounded-xl border border-gray-200 bg-white p-6 lg:h-[760px] lg:overflow-y-auto">
           {videoMeta && workflow.currentStep !== 'capture' && (
             <>
               <video
@@ -647,12 +668,12 @@ export default function Workflow() {
 
           {workflow.currentStep === 'upload' && (
             <div>
-              <h3 className="mb-4 text-xl font-bold">上传视频</h3>
+              <h3 className="mb-4 text-xl font-bold text-gray-900">上传视频</h3>
               <div
-                className={`mx-auto flex h-[480px] w-full max-w-[720px] cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
+                className={`mx-auto flex h-[480px] w-full max-w-[720px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 text-center transition-all ${
                   isDragging
-                    ? 'border-blue-500 bg-blue-500/10'
-                    : 'border-gray-600 hover:border-gray-500'
+                    ? 'border-gray-900 bg-gray-50'
+                    : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
                 }`}
                 onDragOver={(event) => {
                   event.preventDefault();
@@ -676,20 +697,20 @@ export default function Workflow() {
 
                 {isUploading ? (
                   <div>
-                    <div className="mb-4 text-xl">上传中...</div>
-                    <div className="h-4 w-full rounded-full bg-gray-700">
+                    <div className="mb-4 text-xl text-gray-700">上传中...</div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
                       <div
-                        className="h-4 rounded-full bg-blue-500 transition-all"
+                        className="h-full rounded-full bg-gray-900 transition-all"
                         style={{ width: `${uploadProgress}%` }}
                       />
                     </div>
-                    <div className="mt-2 text-sm text-gray-300">{uploadProgress}%</div>
+                    <div className="mt-2 text-sm text-gray-500">{uploadProgress}%</div>
                   </div>
                 ) : (
                   <div>
-                    <div className="text-xl font-semibold">拖放视频文件到此处</div>
+                    <div className="text-xl font-semibold text-gray-700">拖放视频文件到此处</div>
                     <div className="mt-2 text-gray-400">或点击选择文件</div>
-                    <div className="mt-4 text-sm text-gray-500">支持 MP4、WebM 格式，最大 500MB</div>
+                    <div className="mt-4 text-sm text-gray-400">支持 MP4、WebM 格式，最大 500MB</div>
                   </div>
                 )}
               </div>
@@ -700,22 +721,22 @@ export default function Workflow() {
             <div>
               <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h3 className="text-xl font-bold">自动截取关键帧</h3>
-                  <p className="mt-1 text-sm text-gray-400">
+                  <h3 className="text-xl font-bold text-gray-900">自动截取关键帧</h3>
+                  <p className="mt-1 text-sm text-gray-500">
                     原视频时长 {formatTime(videoMeta.duration_ms)}，尺寸 {videoMeta.width} × {videoMeta.height}
                   </p>
                 </div>
                 <button
                   onClick={() => void handleNewProject()}
                   disabled={isCapturing}
-                  className="self-start rounded bg-gray-700 px-4 py-2 text-sm hover:bg-gray-600 disabled:opacity-50"
+                  className="self-start rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
                 >
                   重新上传视频
                 </button>
               </div>
 
               <div className="grid items-start justify-center gap-6 xl:grid-cols-[632px_280px]">
-                <div className="mx-auto flex h-[356px] w-full max-w-[632px] items-center justify-center overflow-hidden rounded-lg bg-gray-900">
+                <div className="mx-auto flex h-[356px] w-full max-w-[632px] items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
                   <video
                     ref={videoRef}
                     src={videoMeta.url}
@@ -726,20 +747,20 @@ export default function Workflow() {
                   />
                 </div>
 
-                <div className="w-full rounded bg-gray-900 p-4 xl:w-[280px]">
-                  <div className="mb-4 text-sm font-semibold text-gray-200">截取方式</div>
-                  <div className="mb-4 grid grid-cols-2 rounded bg-gray-800 p-1">
+                <div className="w-full rounded-xl border border-gray-200 bg-gray-50 p-4 xl:w-[280px]">
+                  <div className="mb-4 text-sm font-semibold text-gray-700">截取方式</div>
+                  <div className="mb-4 grid grid-cols-2 rounded-lg border border-gray-200 bg-white p-1">
                     <button
                       onClick={() => setCaptureMode('count')}
                       disabled={isCapturing}
-                      className={`rounded px-3 py-2 text-sm ${captureMode === 'count' ? 'bg-blue-600' : 'hover:bg-gray-700'}`}
+                      className={`rounded-md px-3 py-2 text-sm transition-colors ${captureMode === 'count' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
                     >
                       按帧数
                     </button>
                     <button
                       onClick={() => setCaptureMode('step')}
                       disabled={isCapturing}
-                      className={`rounded px-3 py-2 text-sm ${captureMode === 'step' ? 'bg-blue-600' : 'hover:bg-gray-700'}`}
+                      className={`rounded-md px-3 py-2 text-sm transition-colors ${captureMode === 'step' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
                     >
                       按步长
                     </button>
@@ -747,7 +768,7 @@ export default function Workflow() {
 
                   {captureMode === 'count' ? (
                     <label className="block">
-                      <span className="mb-1 block text-sm text-gray-400">截取帧数</span>
+                      <span className="mb-1 block text-sm text-gray-500">截取帧数</span>
                       <input
                         type="number"
                         min="1"
@@ -755,12 +776,12 @@ export default function Workflow() {
                         value={frameCount}
                         disabled={isCapturing}
                         onChange={(event) => setFrameCount(Number(event.target.value) || 1)}
-                        className="w-full rounded bg-gray-700 px-3 py-2"
+                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400"
                       />
                     </label>
                   ) : (
                     <label className="block">
-                      <span className="mb-1 block text-sm text-gray-400">截取步长（毫秒）</span>
+                      <span className="mb-1 block text-sm text-gray-500">截取步长（毫秒）</span>
                       <input
                         type="number"
                         min="1"
@@ -771,27 +792,27 @@ export default function Workflow() {
                           const value = Math.floor(Number(event.target.value));
                           setStepMs(Number.isFinite(value) && value > 0 ? value : 1);
                         }}
-                        className="w-full rounded bg-gray-700 px-3 py-2"
+                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400"
                       />
                     </label>
                   )}
 
                   {isCapturing && (
                     <div className="mt-4">
-                      <div className="h-3 rounded-full bg-gray-700">
+                      <div className="h-2 overflow-hidden rounded-full bg-gray-200">
                         <div
-                          className="h-3 rounded-full bg-blue-500 transition-all"
+                          className="h-full rounded-full bg-gray-900 transition-all"
                           style={{ width: `${captureProgress}%` }}
                         />
                       </div>
-                      <div className="mt-2 text-sm text-gray-400">正在截取 {captureProgress}%</div>
+                      <div className="mt-2 text-sm text-gray-500">正在截取 {captureProgress}%</div>
                     </div>
                   )}
 
                   <button
                     onClick={() => void handleCaptureFrames()}
-                    disabled={!isReady || isCapturing}
-                    className="mt-6 w-full rounded bg-blue-600 px-4 py-3 font-bold hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!videoMeta || isCapturing}
+                    className="mt-6 w-full rounded-lg bg-gray-900 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     截取关键帧
                   </button>
@@ -806,20 +827,20 @@ export default function Workflow() {
             <div>
               <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-xl font-bold">确认关键帧</h3>
-                  <p className="mt-1 text-sm text-gray-400">当前共 {workflow.frameTimestamps.length} 帧</p>
+                  <h3 className="text-xl font-bold text-gray-900">确认关键帧</h3>
+                  <p className="mt-1 text-sm text-gray-500">当前共 {workflow.frameTimestamps.length} 帧</p>
                 </div>
                 <div className="flex gap-3">
                   <button
                     onClick={() => updateWorkflow((current) => ({ ...current, currentStep: 'capture' }))}
-                    className="rounded bg-gray-700 px-4 py-2 text-sm hover:bg-gray-600"
+                    className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
                   >
                     重新截取
                   </button>
                   <button
                     onClick={handleClearFrames}
                     disabled={workflow.frameTimestamps.length === 0}
-                    className="rounded bg-red-600 px-4 py-2 text-sm hover:bg-red-500 disabled:opacity-50"
+                    className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
                   >
                     清空所有
                   </button>
@@ -827,28 +848,28 @@ export default function Workflow() {
               </div>
 
               {frameEntries.length === 0 ? (
-                <div className="rounded bg-gray-900 py-20 text-center text-gray-400">暂无关键帧</div>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 py-20 text-center text-gray-400">暂无关键帧</div>
               ) : (
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
                   {frameEntries.map(({ timestamp, thumb }, index) => (
-                    <div key={timestamp} className="group relative rounded-lg bg-gray-900 p-2">
+                    <div key={timestamp} className="group relative rounded-xl border border-gray-200 bg-white p-2">
                       <div className="mb-2 flex items-center justify-between gap-2">
-                        <span className="truncate text-xs font-medium text-gray-300">
+                        <span className="truncate text-xs font-medium text-gray-500">
                           {formatTime(timestamp)}
                         </span>
                         <button
                           onClick={() => handleDeleteFrame(timestamp)}
-                          className="flex h-6 w-6 flex-none items-center justify-center rounded bg-red-600 text-xs opacity-80 transition-opacity hover:bg-red-500 group-hover:opacity-100"
+                          className="flex h-6 w-6 flex-none items-center justify-center rounded-full text-xs text-red-400 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
                           title="删除该帧"
                         >
-                          ×
+                          &times;
                         </button>
                       </div>
                       {thumb ? (
                         <button
                           type="button"
                           onClick={() => setPreviewFrame({ src: thumb, label: `帧 ${index + 1} · ${formatTime(timestamp)}` })}
-                          className="flex h-28 w-full items-center justify-center overflow-hidden rounded bg-gray-950 p-0 hover:ring-2 hover:ring-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="flex h-28 w-full items-center justify-center overflow-hidden rounded-lg bg-gray-50 p-0 transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-gray-900"
                           title="点击放大预览"
                         >
                           <img
@@ -858,7 +879,7 @@ export default function Workflow() {
                           />
                         </button>
                       ) : (
-                        <div className="flex h-28 items-center justify-center rounded bg-gray-950 text-sm text-gray-500">预览失败</div>
+                        <div className="flex h-28 items-center justify-center rounded-lg bg-gray-50 text-sm text-gray-400">预览失败</div>
                       )}
                     </div>
                   ))}
@@ -869,7 +890,7 @@ export default function Workflow() {
                 <button
                   onClick={() => updateWorkflow((current) => ({ ...current, currentStep: 'settings' }))}
                   disabled={workflow.frameTimestamps.length === 0}
-                  className="rounded bg-green-600 px-8 py-3 font-bold hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg bg-gray-900 px-8 py-3 text-sm font-bold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   继续处理
                 </button>
@@ -879,10 +900,10 @@ export default function Workflow() {
 
           {workflow.currentStep === 'settings' && (
             <div>
-              <h3 className="mb-6 text-xl font-bold">处理设置</h3>
+              <h3 className="mb-6 text-xl font-bold text-gray-900">处理设置</h3>
 
-              <div className="mb-6 min-w-0 rounded bg-gray-900 p-4">
-                <h4 className="mb-4 font-semibold">帧预览 ({workflow.frameTimestamps.length} 帧)</h4>
+              <div className="mb-6 min-w-0 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <h4 className="mb-4 font-semibold text-gray-900">帧预览 ({workflow.frameTimestamps.length} 帧)</h4>
                 <div className="max-w-full overflow-x-auto pb-2">
                   <div className="flex w-max gap-3">
                   {workflow.frameTimestamps.map((timestamp, index) => {
@@ -892,7 +913,7 @@ export default function Workflow() {
                         key={timestamp}
                         type="button"
                         onClick={() => setPreviewFrame({ src: thumb, label: `帧 ${index + 1} · ${formatTime(timestamp)}` })}
-                        className="h-28 w-20 flex-none overflow-hidden rounded bg-gray-800 p-0 hover:ring-2 hover:ring-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="h-28 w-20 flex-none overflow-hidden rounded-lg border border-gray-200 bg-white p-0 transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-gray-900"
                         title="点击放大预览"
                       >
                         <img
@@ -902,7 +923,7 @@ export default function Workflow() {
                         />
                       </button>
                     ) : (
-                      <div key={timestamp} className="flex h-28 w-20 flex-none items-center justify-center rounded bg-gray-700 text-xs text-gray-400">
+                      <div key={timestamp} className="flex h-28 w-20 flex-none items-center justify-center rounded-lg border border-gray-200 bg-white text-xs text-gray-400">
                         {Math.floor(timestamp / 1000)}s
                       </div>
                     );
@@ -911,17 +932,17 @@ export default function Workflow() {
                 </div>
               </div>
 
-              <div className="mb-6 rounded bg-gray-900 p-6">
-                <h4 className="mb-4 font-semibold">处理选项</h4>
+              <div className="mb-6 rounded-xl border border-gray-200 p-6">
+                <h4 className="mb-4 font-semibold text-gray-900">处理选项</h4>
                 <div className="space-y-4">
                   <label className="flex cursor-pointer items-center gap-3">
                     <input
                       type="checkbox"
                       checked={settings.removeBg}
                       onChange={(event) => updateSettings({ ...settings, removeBg: event.target.checked })}
-                      className="h-5 w-5"
+                      className="h-5 w-5 rounded border-gray-300"
                     />
-                    <span>去除背景 (rembg)</span>
+                    <span className="text-gray-700">去除背景 (rembg)</span>
                   </label>
 
                   <label className="flex cursor-pointer items-center gap-3">
@@ -929,14 +950,14 @@ export default function Workflow() {
                       type="checkbox"
                       checked={settings.enableWatermark}
                       onChange={(event) => updateSettings({ ...settings, enableWatermark: event.target.checked })}
-                      className="h-5 w-5"
+                      className="h-5 w-5 rounded border-gray-300"
                     />
-                    <span>去除水印</span>
+                    <span className="text-gray-700">去除水印</span>
                   </label>
 
                   {settings.enableWatermark && firstThumbnail && (
                     <div className="pt-2">
-                      <p className="mb-2 text-sm text-gray-400">在下方图片上框选水印区域</p>
+                      <p className="mb-2 text-sm text-gray-500">在下方图片上框选水印区域</p>
                       <BoxSelector
                         imageUrl={firstThumbnail}
                         onBoxChange={(watermarkBox) => updateSettings({ ...settings, watermarkBox })}
@@ -946,11 +967,11 @@ export default function Workflow() {
                 </div>
               </div>
 
-              <div className="mb-6 rounded bg-gray-900 p-6">
-                <h4 className="mb-4 font-semibold">精灵表布局</h4>
+              <div className="mb-6 rounded-xl border border-gray-200 p-6">
+                <h4 className="mb-4 font-semibold text-gray-900">精灵表布局</h4>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label>
-                    <span className="mb-1 block text-sm text-gray-400">列数</span>
+                    <span className="mb-1 block text-sm text-gray-500">列数</span>
                     <input
                       type="number"
                       min="1"
@@ -961,11 +982,11 @@ export default function Workflow() {
                         layoutColsTouched: true,
                         layout: { ...settings.layout, cols: parseInt(event.target.value, 10) || 1 },
                       })}
-                      className="w-full rounded bg-gray-700 px-3 py-2"
+                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400"
                     />
                   </label>
                   <label>
-                    <span className="mb-1 block text-sm text-gray-400">间距 (px)</span>
+                    <span className="mb-1 block text-sm text-gray-500">间距 (px)</span>
                     <input
                       type="number"
                       min="0"
@@ -975,7 +996,7 @@ export default function Workflow() {
                         ...settings,
                         layout: { ...settings.layout, padding: parseInt(event.target.value, 10) || 0 },
                       })}
-                      className="w-full rounded bg-gray-700 px-3 py-2"
+                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400"
                     />
                   </label>
                 </div>
@@ -984,14 +1005,14 @@ export default function Workflow() {
               <div className="flex justify-between">
                 <button
                   onClick={() => updateWorkflow((current) => ({ ...current, currentStep: 'frames' }))}
-                  className="rounded bg-gray-700 px-6 py-3 hover:bg-gray-600"
+                  className="rounded-lg border border-gray-200 bg-white px-6 py-3 text-sm text-gray-700 transition-colors hover:bg-gray-50"
                 >
                   返回帧列表
                 </button>
                 <button
                   onClick={() => void handleStartProcess()}
                   disabled={isProcessing || workflow.frameTimestamps.length === 0}
-                  className="rounded bg-green-600 px-8 py-3 text-lg font-bold hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-lg bg-gray-900 px-8 py-3 text-base font-bold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   开始处理
                 </button>
@@ -1003,35 +1024,35 @@ export default function Workflow() {
             <div>
               <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-xl font-bold">导出结果</h3>
-                  <p className="mt-1 text-sm text-gray-400">任务 ID：{workflow.jobId ?? '未创建'}</p>
+                  <h3 className="text-xl font-bold text-gray-900">导出结果</h3>
+                  <p className="mt-1 text-sm text-gray-500">任务 ID：{workflow.jobId ?? '未创建'}</p>
                 </div>
                 <button
                   onClick={() => updateWorkflow((current) => ({ ...current, currentStep: 'settings' }))}
                   disabled={isProcessing}
-                  className="self-start rounded bg-gray-700 px-4 py-2 text-sm hover:bg-gray-600 disabled:opacity-50 sm:self-auto"
+                  className="self-start rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 sm:self-auto"
                 >
                   返回设置
                 </button>
               </div>
 
               {!resultStatus || resultStatus.status !== 'done' ? (
-                <div className="rounded-lg bg-gray-900 p-8 text-center">
+                <div className="rounded-xl border border-gray-200 p-8 text-center">
                   {resultStatus?.status === 'failed' ? (
                     <>
-                      <div className="mb-2 text-2xl font-bold text-red-400">处理失败</div>
-                      <div className="text-gray-400">{resultStatus.error || '未知错误'}</div>
+                      <div className="mb-2 text-2xl font-bold text-red-500">处理失败</div>
+                      <div className="text-gray-500">{resultStatus.error || '未知错误'}</div>
                     </>
                   ) : (
                     <>
-                      <div className="mb-6 text-2xl font-bold">正在处理...</div>
-                      <div className="mx-auto mb-4 h-6 max-w-xl rounded-full bg-gray-700">
+                      <div className="mb-6 text-2xl font-bold text-gray-900">正在处理...</div>
+                      <div className="mx-auto mb-4 h-3 max-w-xl overflow-hidden rounded-full bg-gray-200">
                         <div
-                          className="h-6 rounded-full bg-blue-500 transition-all"
+                          className="h-full rounded-full bg-gray-900 transition-all"
                           style={{ width: `${progressPercent}%` }}
                         />
                       </div>
-                      <div className="text-lg text-gray-300">
+                      <div className="text-base text-gray-600">
                         {stageLabels[resultStatus?.stage ?? ''] || resultStatus?.stage || '等待任务'} - {progressPercent}%
                       </div>
                     </>
@@ -1039,10 +1060,10 @@ export default function Workflow() {
                 </div>
               ) : (
                 <>
-                  <div className="mb-8 rounded-lg bg-gray-900 p-6">
-                    <h4 className="mb-4 font-semibold">精灵表预览</h4>
+                  <div className="mb-8 rounded-xl border border-gray-200 p-6">
+                    <h4 className="mb-4 font-semibold text-gray-900">精灵表预览</h4>
                     {resultStatus.result?.spritesheet_url && (
-                      <div className="max-h-[60vh] overflow-auto rounded bg-gray-950">
+                      <div className="max-h-[60vh] overflow-auto rounded-lg border border-gray-100 bg-gray-50">
                         <img
                           src={resultStatus.result.spritesheet_url}
                           alt="精灵表"
@@ -1052,18 +1073,18 @@ export default function Workflow() {
                     )}
                   </div>
 
-                  <div className="mb-8 rounded-lg bg-gray-900 p-6">
+                  <div className="mb-8 rounded-xl border border-gray-200 p-6">
                     <div className="mb-4 flex items-center justify-between gap-4">
-                      <h4 className="font-semibold">逐帧播放</h4>
+                      <h4 className="font-semibold text-gray-900">逐帧播放</h4>
                       <button
                         onClick={() => setIsPlayingFrames((current) => !current)}
                         disabled={!playingFrameUrl}
-                        className="rounded bg-gray-700 px-4 py-2 text-sm hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {isPlayingFrames ? '暂停播放' : '逐帧播放'}
                       </button>
                     </div>
-                    <div className="flex h-64 items-center justify-center rounded bg-gray-950">
+                    <div className="flex h-64 items-center justify-center rounded-lg border border-gray-100 bg-gray-50">
                       {playingFrameUrl ? (
                         <img
                           src={playingFrameUrl}
@@ -1071,28 +1092,50 @@ export default function Workflow() {
                           className="max-h-full max-w-full object-contain"
                         />
                       ) : (
-                        <div className="text-sm text-gray-500">暂无处理后帧，请重新开始处理生成逐帧预览</div>
+                        <div className="text-sm text-gray-400">暂无处理后帧，请重新开始处理生成逐帧预览</div>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex flex-col justify-center gap-4 sm:flex-row">
-                    <button
-                      onClick={() => {
-                        if (resultStatus.result?.spritesheet_url) {
-                          window.open(resultStatus.result.spritesheet_url, '_blank');
-                        }
-                      }}
-                      className="rounded bg-blue-600 px-8 py-3 font-bold hover:bg-blue-500"
-                    >
-                      下载 PNG
-                    </button>
-                    <button
-                      onClick={() => void handleDownloadZip()}
-                      className="rounded bg-green-600 px-8 py-3 font-bold hover:bg-green-500"
-                    >
-                      下载 ZIP (PNG + JSON)
-                    </button>
+                  <div className="rounded-xl border border-gray-200 p-6">
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto_auto_auto] lg:items-end">
+                      <label className="block">
+                        <span className="mb-2 block text-sm font-semibold text-gray-700">导出到引擎</span>
+                        <select
+                          value={engineExportTarget}
+                          onChange={(event) => setEngineExportTarget(event.target.value as EnginePackageTarget)}
+                          className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400"
+                        >
+                          {engineExportOptions.map((option) => (
+                            <option key={option.target} value={option.target}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        onClick={() => {
+                          if (resultStatus.result?.spritesheet_url) {
+                            window.open(resultStatus.result.spritesheet_url, '_blank');
+                          }
+                        }}
+                        className="rounded-lg bg-gray-900 px-8 py-3 text-sm font-bold text-white transition-colors hover:bg-gray-800"
+                      >
+                        下载 PNG
+                      </button>
+                      <button
+                        onClick={() => void handleDownloadZip(engineExportTarget)}
+                        className="rounded-lg border border-gray-200 bg-white px-8 py-3 text-sm font-bold text-gray-700 transition-colors hover:bg-gray-50"
+                      >
+                        {selectedExportOption.button}
+                      </button>
+                      <button
+                        onClick={() => void handleDownloadZip('generic')}
+                        className="rounded-lg border border-gray-200 bg-white px-8 py-3 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                      >
+                        下载通用 ZIP
+                      </button>
+                    </div>
                   </div>
                 </>
               )}
@@ -1103,23 +1146,23 @@ export default function Workflow() {
 
       {previewFrame && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6"
           onClick={() => setPreviewFrame(null)}
         >
           <div
-            className="max-h-full max-w-4xl rounded-lg bg-gray-900 p-4 shadow-xl"
+            className="max-h-full max-w-4xl rounded-2xl bg-white p-4 shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between gap-4">
-              <div className="text-sm font-medium text-gray-200">{previewFrame.label}</div>
+              <div className="text-sm font-medium text-gray-700">{previewFrame.label}</div>
               <button
                 onClick={() => setPreviewFrame(null)}
-                className="rounded bg-gray-700 px-3 py-1 text-sm hover:bg-gray-600"
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-sm text-gray-700 transition-colors hover:bg-gray-50"
               >
                 关闭
               </button>
             </div>
-            <div className="flex max-h-[78vh] items-center justify-center overflow-auto rounded bg-gray-950">
+            <div className="flex max-h-[78vh] items-center justify-center overflow-auto rounded-xl bg-gray-50">
               <img
                 src={previewFrame.src}
                 alt={previewFrame.label}

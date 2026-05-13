@@ -1,5 +1,6 @@
 import asyncio
 import shutil
+from typing import Literal
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
@@ -8,6 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .models import (
     CreateJobRequest,
+    ExtractFramesRequest,
+    ExtractFramesResponse,
+    ExtractedFramePreview,
     VideoUploadResponse,
     JobResponse,
     JobStatusResponse,
@@ -15,7 +19,8 @@ from .models import (
     JobStatus,
 )
 from . import store
-from .media.extract import get_video_info
+from .exporters import build_engine_export
+from .media.extract import extract_frame_with_retry, get_video_info, save_frame_preview
 from .worker import process_job
 
 
@@ -107,6 +112,54 @@ async def get_video_source(video_id: str):
     return FileResponse(video_path)
 
 
+@app.post("/api/videos/{video_id}/frames", response_model=ExtractFramesResponse)
+async def extract_video_frames(video_id: str, request: ExtractFramesRequest):
+    video_meta = store.get_video_meta(video_id)
+    if not video_meta:
+        raise HTTPException(404, "视频不存在")
+
+    video_path = store.get_video_path(video_id)
+    if not video_path:
+        raise HTTPException(404, "视频文件不存在")
+
+    timestamps = request.timestamps_ms
+    if not timestamps:
+        return ExtractFramesResponse(frames=[])
+
+    thumbs_dir = store.UPLOADS_DIR / video_id / "thumbs"
+    thumbs_dir.mkdir(parents=True, exist_ok=True)
+    for existing_path in thumbs_dir.glob("*.png"):
+        existing_path.unlink(missing_ok=True)
+
+    frames: list[ExtractedFramePreview] = []
+
+    try:
+        for index, timestamp_ms in enumerate(timestamps):
+            frame, actual_ts = await asyncio.to_thread(
+                extract_frame_with_retry,
+                video_path,
+                timestamp_ms,
+                video_meta.duration_ms,
+                video_meta.fps,
+            )
+            rounded_ts = int(round(actual_ts))
+            filename = f"{index:04d}_{rounded_ts}.png"
+            output_path = thumbs_dir / filename
+
+            await asyncio.to_thread(save_frame_preview, frame, output_path)
+
+            frames.append(
+                ExtractedFramePreview(
+                    ts_ms=rounded_ts,
+                    url=f"/files/uploads/{video_id}/thumbs/{filename}",
+                )
+            )
+    except Exception as exc:
+        raise HTTPException(500, f"自动截帧失败: {str(exc)}") from exc
+
+    return ExtractFramesResponse(frames=frames)
+
+
 @app.delete("/api/videos/{video_id}")
 async def delete_video(video_id: str):
     success = store.delete_video(video_id)
@@ -155,7 +208,11 @@ async def delete_job(job_id: str):
 
 
 @app.get("/api/jobs/{job_id}/export.zip")
-async def export_job(job_id: str, background_tasks: BackgroundTasks):
+async def export_job(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    target: Literal["generic", "cocos", "unity", "godot"] = "generic",
+):
     job = store.get_job(job_id)
     if not job:
         raise HTTPException(404, "任务不存在")
@@ -170,16 +227,15 @@ async def export_job(job_id: str, background_tasks: BackgroundTasks):
     if not sheet_path.exists() or not meta_path.exists():
         raise HTTPException(400, "精灵表尚未生成")
 
-    zip_path = store.TMP_DIR / f"{job_id}_export.zip"
-    zip_path.unlink(missing_ok=True)
-    shutil.make_archive(str(zip_path.with_suffix("")), "zip", job_dir)
+    zip_path = store.TMP_DIR / f"{job_id}_{target}_export.zip"
+    build_engine_export(job_id, job_dir, zip_path, target)
 
     background_tasks.add_task(zip_path.unlink, missing_ok=True)
 
     return FileResponse(
         zip_path,
         media_type="application/zip",
-        filename=f"spritesheet_{job_id}.zip",
+        filename=f"spritesheet_{job_id}_{target}.zip",
     )
 
 

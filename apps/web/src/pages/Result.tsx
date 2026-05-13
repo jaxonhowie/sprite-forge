@@ -1,8 +1,14 @@
-import { useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
-import { deleteVideo } from '../api/client';
-import { clearWorkflow } from '../utils/workflowState';
+import { ApiError, deleteVideo, getJobExportUrl, type EngineExportTarget } from '../api/client';
+import {
+  clearWorkflow,
+  createWorkflowRouteState,
+  getWorkflowState,
+  mergeWorkflowState,
+  type WorkflowRouteState,
+} from '../utils/workflowState';
 
 interface JobResult {
   id: string;
@@ -18,72 +24,163 @@ interface JobResult {
   } | null;
 }
 
-const fetcher = (url: string) => fetch(url).then(r => r.json());
+const fetcher = async (url: string) => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    const error = await response.text().catch(() => response.statusText);
+    throw new ApiError(response.status, `请求失败 (${response.status}): ${error}`);
+  }
+  return response.json() as Promise<JobResult>;
+};
 
 export default function Result() {
   const { jobId } = useParams<{ jobId: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
-  
+  const [workflowState] = useState(() => getWorkflowState());
+  const [missingJob, setMissingJob] = useState(false);
+  const [isPlayingFrames, setIsPlayingFrames] = useState(false);
+  const [playingFrameIndex, setPlayingFrameIndex] = useState(0);
+  const locationState = location.state as WorkflowRouteState | null;
+  const resolvedJobId = jobId ?? locationState?.jobId ?? workflowState?.jobId ?? null;
+
   const { data: job, error, isLoading } = useSWR<JobResult>(
-    jobId ? `/api/jobs/${jobId}` : null,
+    resolvedJobId && !missingJob ? `/api/jobs/${resolvedJobId}` : null,
     fetcher,
     { refreshInterval: 1000 }
   );
 
-  const handleDownloadPng = useCallback(() => {
-    if (job?.result?.spritesheet_url) {
-      window.open(job.result.spritesheet_url, '_blank');
-    }
-  }, [job]);
+  useEffect(() => {
+    if (!(error instanceof ApiError) || error.status !== 404 || !resolvedJobId) return;
 
-  const handleDownloadZip = useCallback(async () => {
-    if (!jobId) return;
-    
+    setMissingJob(true);
+    mergeWorkflowState({
+      currentStep: 'settings',
+      jobId: undefined,
+    });
+  }, [error, resolvedJobId]);
+
+  useEffect(() => {
+    if (!job?.id) return;
+
+    mergeWorkflowState({
+      currentStep: job.status === 'done' ? 'result' : 'settings',
+      jobId: job.id,
+    });
+  }, [job?.id, job?.status]);
+
+  useEffect(() => {
+    const frameCount = job?.result?.frame_urls?.length ?? 0;
+    if (!isPlayingFrames || frameCount === 0) return;
+
+    const timer = window.setInterval(() => {
+      setPlayingFrameIndex((current) => (current + 1) % frameCount);
+    }, 160);
+
+    return () => window.clearInterval(timer);
+  }, [isPlayingFrames, job?.result?.frame_urls?.length]);
+
+  useEffect(() => {
+    setPlayingFrameIndex(0);
+    setIsPlayingFrames(false);
+  }, [job?.id]);
+
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!exportOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setExportOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [exportOpen]);
+
+  const handleExport = useCallback(async (target: EngineExportTarget | 'png') => {
+    setExportOpen(false);
+    if (!resolvedJobId) return;
+
+    if (target === 'png' && job?.result?.spritesheet_url) {
+      window.open(job.result.spritesheet_url, '_blank');
+      return;
+    }
+
     try {
-      const response = await fetch(`/api/jobs/${jobId}/export.zip`);
-      if (!response.ok) throw new Error('下载失败');
-      
+      const url = getJobExportUrl(resolvedJobId, target as EngineExportTarget);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('导出失败');
+
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = `spritesheet_${jobId}.zip`;
+      a.href = blobUrl;
+      a.download = `spritesheet_${resolvedJobId}_${target}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      window.URL.revokeObjectURL(blobUrl);
     } catch (err) {
-      console.error('下载失败:', err);
+      console.error('导出失败:', err);
     }
-  }, [jobId]);
+  }, [resolvedJobId, job]);
 
   const handleNewProject = useCallback(async () => {
-    if (job?.video_id) {
-      clearWorkflow(job.video_id);
+    const videoIdToClear = job?.video_id ?? workflowState?.videoMeta?.video_id;
+
+    if (videoIdToClear) {
+      clearWorkflow(videoIdToClear);
       try {
-        await deleteVideo(job.video_id);
+        await deleteVideo(videoIdToClear);
       } catch {
         // Finished result cleanup should not block returning to upload.
       }
     }
-    navigate('/');
-  }, [job?.video_id, navigate]);
+    navigate('/', {
+      state: createWorkflowRouteState(),
+    });
+  }, [job?.video_id, navigate, workflowState?.videoMeta?.video_id]);
+
+  const processedFrameUrls = job?.result?.frame_urls ?? [];
+  const playingFrameUrl = processedFrameUrls[playingFrameIndex] ?? processedFrameUrls[0];
 
   if (isLoading) {
     return (
-      <div className="max-w-4xl mx-auto text-center py-20">
-        <div className="text-2xl">加载中...</div>
+      <div className="mx-auto max-w-4xl py-20 text-center">
+        <div className="text-lg text-gray-500">加载中...</div>
+      </div>
+    );
+  }
+
+  if (missingJob) {
+    return (
+      <div className="mx-auto max-w-4xl py-20 text-center">
+        <div className="mb-4 text-lg font-bold text-red-500">任务不存在或已失效</div>
+        <div className="mb-6 text-sm text-gray-500">请返回处理设置页重新创建任务。</div>
+        <button
+          onClick={() => navigate('/', {
+            state: createWorkflowRouteState({
+              videoMeta: workflowState?.videoMeta,
+              frameTimestamps: workflowState?.frameTimestamps,
+            }),
+          })}
+          className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800"
+        >
+          返回首页
+        </button>
       </div>
     );
   }
 
   if (error || !job) {
     return (
-      <div className="max-w-4xl mx-auto text-center py-20">
-        <div className="text-2xl text-red-400 mb-4">加载失败</div>
+      <div className="mx-auto max-w-4xl py-20 text-center">
+        <div className="mb-4 text-lg font-bold text-red-500">加载失败</div>
         <button
           onClick={handleNewProject}
-          className="px-6 py-3 bg-blue-600 rounded hover:bg-blue-500"
+          className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800"
         >
           返回首页
         </button>
@@ -93,13 +190,13 @@ export default function Result() {
 
   if (job.status === 'failed') {
     return (
-      <div className="max-w-4xl mx-auto text-center py-20">
-        <div className="text-6xl mb-4">❌</div>
-        <div className="text-2xl text-red-400 mb-2">处理失败</div>
-        <div className="text-gray-400 mb-8">{job.error || '未知错误'}</div>
+      <div className="mx-auto max-w-4xl py-20 text-center">
+        <div className="mb-4 text-5xl">&cross;</div>
+        <div className="mb-2 text-lg font-bold text-red-500">处理失败</div>
+        <div className="mb-8 text-gray-500">{job.error || '未知错误'}</div>
         <button
           onClick={handleNewProject}
-          className="px-6 py-3 bg-blue-600 rounded hover:bg-blue-500"
+          className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800"
         >
           重新开始
         </button>
@@ -116,15 +213,15 @@ export default function Result() {
     };
 
     return (
-      <div className="max-w-4xl mx-auto text-center py-20">
-        <div className="text-2xl font-bold mb-6">正在处理...</div>
-        <div className="w-full max-w-md mx-auto bg-gray-700 rounded-full h-6 mb-4">
+      <div className="mx-auto max-w-4xl py-20 text-center">
+        <div className="mb-6 text-xl font-bold text-gray-900">正在处理...</div>
+        <div className="mx-auto mb-4 h-3 max-w-md overflow-hidden rounded-full bg-gray-200">
           <div
-            className="bg-blue-500 h-6 rounded-full transition-all"
+            className="h-full rounded-full bg-gray-900 transition-all"
             style={{ width: `${Math.round(job.progress * 100)}%` }}
           />
         </div>
-        <div className="text-lg text-gray-300">
+        <div className="text-base text-gray-600">
           {stageLabels[job.stage] || job.stage} - {Math.round(job.progress * 100)}%
         </div>
       </div>
@@ -132,38 +229,116 @@ export default function Result() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <h2 className="text-3xl font-bold mb-8 text-center">处理完成</h2>
+    <div className="mx-auto max-w-4xl">
+      <h2 className="mb-8 text-center text-2xl font-bold text-gray-900">处理完成</h2>
 
-      <div className="bg-gray-800 rounded-lg p-6 mb-8">
-        <h3 className="text-xl font-bold mb-4">精灵表预览</h3>
+      <div className="mb-8 rounded-xl border border-gray-200 p-6">
+        <h3 className="mb-4 text-lg font-bold text-gray-900">精灵表预览</h3>
         {job.result?.spritesheet_url && (
-          <div className="relative overflow-auto max-h-[60vh] bg-gray-900 rounded">
+          <div className="max-h-[60vh] overflow-auto rounded-lg border border-gray-100 bg-gray-50">
             <img
               src={job.result.spritesheet_url}
               alt="精灵表"
-              className="max-w-full h-auto"
+              className="h-auto max-w-full"
             />
           </div>
         )}
       </div>
 
-      <div className="flex flex-col sm:flex-row justify-center gap-4">
-        <button
-          onClick={handleDownloadPng}
-          className="px-8 py-3 bg-blue-600 rounded hover:bg-blue-500 font-bold"
-        >
-          下载 PNG
-        </button>
-        <button
-          onClick={handleDownloadZip}
-          className="px-8 py-3 bg-green-600 rounded hover:bg-green-500 font-bold"
-        >
-          下载 ZIP (PNG + JSON)
-        </button>
+      <div className="mb-8 rounded-xl border border-gray-200 p-6">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <h3 className="text-lg font-bold text-gray-900">逐帧播放</h3>
+          <button
+            onClick={() => setIsPlayingFrames((current) => !current)}
+            disabled={!playingFrameUrl}
+            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isPlayingFrames ? '暂停播放' : '逐帧播放'}
+          </button>
+        </div>
+        <div className="flex h-64 items-center justify-center rounded-lg border border-gray-100 bg-gray-50">
+          {playingFrameUrl ? (
+            <img
+              src={playingFrameUrl}
+              alt="处理后逐帧播放预览"
+              className="max-h-full max-w-full object-contain"
+            />
+          ) : (
+            <div className="text-sm text-gray-400">暂无处理后帧，请重新开始处理生成逐帧预览</div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-col justify-center gap-3 sm:flex-row">
+        <div ref={exportRef} className="relative">
+          <button
+            onClick={() => setExportOpen(!exportOpen)}
+            className="flex items-center gap-2 rounded-lg bg-gray-900 px-8 py-3 text-sm font-bold text-white transition-colors hover:bg-gray-800"
+          >
+            导出
+            <svg className={`h-4 w-4 transition-transform ${exportOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {exportOpen && (
+            <div className="absolute left-1/2 z-10 mt-2 w-56 -translate-x-1/2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+              <button
+                onClick={() => void handleExport('png')}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                <span className="text-base">🖼</span>
+                <div>
+                  <div className="font-medium">下载 PNG</div>
+                  <div className="text-xs text-gray-400">仅精灵表图片</div>
+                </div>
+              </button>
+              <button
+                onClick={() => void handleExport('generic')}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                <span className="text-base">📦</span>
+                <div>
+                  <div className="font-medium">下载 ZIP</div>
+                  <div className="text-xs text-gray-400">PNG + JSON 元数据</div>
+                </div>
+              </button>
+              <div className="border-t border-gray-100" />
+              <button
+                onClick={() => void handleExport('godot')}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                <span className="text-base">🎮</span>
+                <div>
+                  <div className="font-medium">Godot 4</div>
+                  <div className="text-xs text-gray-400">SpriteFrames + AtlasTexture</div>
+                </div>
+              </button>
+              <button
+                onClick={() => void handleExport('unity')}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                <span className="text-base">🎯</span>
+                <div>
+                  <div className="font-medium">Unity</div>
+                  <div className="text-xs text-gray-400">Sprite Sheet + Importer</div>
+                </div>
+              </button>
+              <button
+                onClick={() => void handleExport('cocos')}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                <span className="text-base">🔧</span>
+                <div>
+                  <div className="font-medium">Cocos Creator</div>
+                  <div className="text-xs text-gray-400">plist + animation.json</div>
+                </div>
+              </button>
+            </div>
+          )}
+        </div>
         <button
           onClick={handleNewProject}
-          className="px-8 py-3 bg-gray-700 rounded hover:bg-gray-600"
+          className="rounded-lg border border-gray-200 bg-white px-8 py-3 text-sm text-gray-700 transition-colors hover:bg-gray-50"
         >
           新项目
         </button>

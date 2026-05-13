@@ -114,17 +114,35 @@ export function useVideoFrame({
     return duration;
   }, [duration]);
 
-  const waitForPaint = useCallback(() => {
+  const waitForRenderedFrame = useCallback((video: HTMLVideoElement) => {
     return new Promise<void>((resolve) => {
+      let settled = false;
+
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+
+      if ('requestVideoFrameCallback' in video) {
+        (
+          video as HTMLVideoElement & {
+            requestVideoFrameCallback: (callback: () => void) => number;
+          }
+        ).requestVideoFrameCallback(() => finish());
+      }
+
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => resolve());
+        requestAnimationFrame(() => finish());
       });
+
+      setTimeout(finish, 120);
     });
   }, []);
 
   const seek = useCallback((timeMs: number): Promise<number> => {
     const video = videoRef.current;
-    if (!video || video.readyState < 1) {
+    if (!video || video.readyState < 1 || !video.isConnected) {
       return Promise.resolve(currentTimeRef.current);
     }
 
@@ -133,29 +151,40 @@ export function useVideoFrame({
     const targetSec = clamped / 1000;
 
     return new Promise((resolve) => {
-      let settled = false;
+      let resolved = false;
+      const deadline = Date.now() + 1000;
 
       const finish = () => {
-        if (settled) return;
-        settled = true;
-        const actualMs = video.currentTime * 1000;
-        currentTimeRef.current = actualMs;
-        setCurrentTime(actualMs);
-        resolve(actualMs);
+        if (resolved) return;
+        void waitForRenderedFrame(video).then(() => {
+          if (resolved) return;
+          resolved = true;
+          const actualMs = video.currentTime * 1000;
+          currentTimeRef.current = actualMs;
+          setCurrentTime(actualMs);
+          resolve(actualMs);
+        });
       };
 
-      const onSeeked = () => {
-        void waitForPaint().then(finish);
+      const checkReached = () => {
+        if (resolved) return;
+        if (Math.abs(video.currentTime - targetSec) < 0.05) {
+          finish();
+        } else if (Date.now() < deadline) {
+          setTimeout(checkReached, 16);
+        } else {
+          finish();
+        }
       };
 
-      if (Math.abs(video.currentTime - targetSec) < 0.001) {
-        void waitForPaint().then(finish);
-      } else {
-        video.addEventListener('seeked', onSeeked, { once: true });
-        video.currentTime = targetSec;
-      }
+      video.addEventListener('seeked', () => {
+        if (!resolved) checkReached();
+      }, { once: true });
+      video.currentTime = targetSec;
+
+      setTimeout(checkReached, 50);
     });
-  }, [getDurationMs, waitForPaint]);
+  }, [getDurationMs, waitForRenderedFrame]);
 
   const captureFrame = useCallback((): string | null => {
     const video = videoRef.current;
@@ -171,7 +200,7 @@ export function useVideoFrame({
 
     ctx.drawImage(video, 0, 0);
     const dataUrl = canvas.toDataURL('image/png');
-    
+
     if (onFrameCapture) {
       onFrameCapture(dataUrl);
     }

@@ -6,7 +6,7 @@ from PIL import Image
 
 from .models import JobStatus, JobProgress, CreateJobRequest
 from . import store
-from .media.extract import extract_frame
+from .media.extract import extract_frame_with_retry
 from .media.inpaint import build_mask, inpaint_frame
 from .media.remove_bg import remove_background, preload_model
 from .media.pack import pack_grid
@@ -24,6 +24,10 @@ async def process_job(
     if not video_path:
         raise ValueError(f"视频不存在: {job.video_id}")
 
+    video_meta = store.get_video_meta(job.video_id)
+    if not video_meta:
+        raise ValueError(f"视频元数据不存在: {job.video_id}")
+
     job_dir = store.get_job_dir(job_id)
     frames_dir = job_dir / "frames"
     frames_dir.mkdir(exist_ok=True)
@@ -31,12 +35,13 @@ async def process_job(
     store.update_job(job_id, status=JobStatus.RUNNING, stage="extract", progress=0.0)
 
     params = job.params
-    timestamps = params.timestamps_ms
-    total = len(timestamps)
+    requested_timestamps = params.timestamps_ms
+    actual_timestamps: list[float] = []
+    total = len(requested_timestamps)
     frames = []
 
     try:
-        for i, ts in enumerate(timestamps):
+        for i, ts in enumerate(requested_timestamps):
             progress = (i + 0.5) / (total + 1)
 
             if on_progress:
@@ -46,8 +51,15 @@ async def process_job(
                     message=f"截帧 {i + 1}/{total}",
                 ))
 
-            frame = await asyncio.to_thread(extract_frame, video_path, ts)
+            frame, actual_ts = await asyncio.to_thread(
+                extract_frame_with_retry,
+                video_path,
+                ts,
+                video_meta.duration_ms,
+                video_meta.fps,
+            )
             frames.append(frame)
+            actual_timestamps.append(actual_ts)
 
             store.update_job(job_id, progress=progress, stage="extract")
 
@@ -110,6 +122,14 @@ async def process_job(
             cols=params.layout.cols,
             padding=params.layout.padding,
         )
+        for i, frame_meta in enumerate(meta["frames"]):
+            frame_meta["name"] = f"sprite_{i:04d}.png"
+            frame_meta["ts_ms"] = int(round(actual_timestamps[i])) if i < len(actual_timestamps) else 0
+        meta["animation"] = {
+            "fps": 12,
+            "loop": True,
+            "frames": [frame["name"] for frame in meta["frames"]],
+        }
 
         sheet_path = job_dir / "spritesheet.png"
         sheet.save(str(sheet_path))

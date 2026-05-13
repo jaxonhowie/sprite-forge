@@ -16,6 +16,15 @@ export interface VideoMeta {
   url: string;
 }
 
+export interface ExtractedFramePreview {
+  ts_ms: number;
+  url: string;
+}
+
+export interface ExtractFramesResponse {
+  frames: ExtractedFramePreview[];
+}
+
 export interface CreateJobRequest {
   video_id: string;
   timestamps_ms: number[];
@@ -54,7 +63,19 @@ export interface JobStatus {
   };
 }
 
+export type EngineExportTarget = 'generic' | 'cocos' | 'unity' | 'godot';
+
 const BASE_URL = '';
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
 
 async function request<T>(
   path: string,
@@ -72,7 +93,7 @@ async function request<T>(
 
   if (!response.ok) {
     const error = await response.text().catch(() => response.statusText);
-    throw new Error(`请求失败 (${response.status}): ${error}`);
+    throw new ApiError(response.status, `请求失败 (${response.status}): ${error}`);
   }
 
   return response.json();
@@ -112,6 +133,15 @@ export async function getVideoMeta(videoId: string): Promise<VideoMeta> {
   return request<VideoMeta>(`/api/videos/${videoId}`);
 }
 
+export async function extractVideoFrames(videoId: string, timestampsMs: number[]): Promise<ExtractFramesResponse> {
+  return request<ExtractFramesResponse>(`/api/videos/${videoId}/frames`, {
+    method: 'POST',
+    body: JSON.stringify({
+      timestamps_ms: timestampsMs,
+    }),
+  });
+}
+
 export async function createJob(jobData: CreateJobRequest): Promise<JobResponse> {
   return request<JobResponse>('/api/jobs', {
     method: 'POST',
@@ -135,8 +165,9 @@ export async function deleteVideo(videoId: string): Promise<void> {
   });
 }
 
-export function getJobExportUrl(jobId: string): string {
-  return `/api/jobs/${jobId}/export.zip`;
+export function getJobExportUrl(jobId: string, target: EngineExportTarget = 'generic'): string {
+  const params = target === 'generic' ? '' : `?target=${target}`;
+  return `/api/jobs/${jobId}/export.zip${params}`;
 }
 
 export function getFileUrl(path: string): string {

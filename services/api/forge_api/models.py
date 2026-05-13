@@ -57,6 +57,19 @@ class VideoUploadResponse(BaseModel):
     url: str
 
 
+class ExtractFramesRequest(BaseModel):
+    timestamps_ms: List[float]
+
+
+class ExtractedFramePreview(BaseModel):
+    ts_ms: int
+    url: str
+
+
+class ExtractFramesResponse(BaseModel):
+    frames: List[ExtractedFramePreview]
+
+
 class JobResponse(BaseModel):
     job_id: str
     status: JobStatus
