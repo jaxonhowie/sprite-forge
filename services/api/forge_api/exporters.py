@@ -319,3 +319,21 @@ def build_engine_export(job_id: str, job_dir: Path, zip_path: Path, target: Expo
             return
 
     raise ValueError(f"不支持的导出目标: {target}")
+
+
+def build_image_export(job_id: str, job_dir: Path, zip_path: Path) -> None:
+    zip_path.unlink(missing_ok=True)
+
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        root = f"image_segments_{job_id}"
+        _write_readme(archive, root, "图片切图")
+
+        for filename in ("spritesheet.png", "spritesheet.json", "manifest.json"):
+            source_path = job_dir / filename
+            if source_path.exists():
+                archive.write(source_path, f"{root}/{filename}")
+
+        items_dir = job_dir / "items"
+        if items_dir.exists():
+            for item_path in sorted(items_dir.glob("*.png")):
+                archive.write(item_path, f"{root}/items/{item_path.name}")

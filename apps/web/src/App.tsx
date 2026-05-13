@@ -1,9 +1,13 @@
 import { Link, Navigate, Route, Routes } from 'react-router-dom';
+import Home from './pages/Home';
 import Upload from './pages/Upload';
 import Capture from './pages/Capture';
 import Frames from './pages/Frames';
 import Process from './pages/Process';
 import Result from './pages/Result';
+import ImageUpload from './pages/ImageUpload';
+import ImageSegments from './pages/ImageSegments';
+import ImageResult from './pages/ImageResult';
 
 function App() {
   return (
@@ -19,17 +23,23 @@ function App() {
           </Link>
           <nav className="flex items-center gap-6 text-sm font-medium text-gray-600">
             <Link className="transition-colors hover:text-gray-900" to="/">首页</Link>
+            <Link className="transition-colors hover:text-gray-900" to="/video">视频处理</Link>
+            <Link className="transition-colors hover:text-gray-900" to="/image">图片切图</Link>
           </nav>
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-10">
         <Routes>
-          <Route path="/" element={<Upload />} />
+          <Route path="/" element={<Home />} />
+          <Route path="/video" element={<Upload />} />
           <Route path="/capture/:videoId" element={<Capture />} />
           <Route path="/frames/:videoId" element={<Frames />} />
           <Route path="/process/:videoId" element={<Process />} />
           <Route path="/result/:jobId" element={<Result />} />
+          <Route path="/image" element={<ImageUpload />} />
+          <Route path="/image/segments/:imageId" element={<ImageSegments />} />
+          <Route path="/image/result/:jobId" element={<ImageResult />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

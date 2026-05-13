@@ -14,6 +14,7 @@ class JobStatus(str, Enum):
 class JobStage(str, Enum):
     EXTRACT = "extract"
     INPAINT = "inpaint"
+    LIGHT = "light"
     REMBG = "rembg"
     PACK = "pack"
 
@@ -70,6 +71,44 @@ class ExtractFramesResponse(BaseModel):
     frames: List[ExtractedFramePreview]
 
 
+class ImageMeta(BaseModel):
+    id: str
+    filename: str
+    width: int
+    height: int
+    created_at: datetime
+
+
+class ImageUploadResponse(BaseModel):
+    image_id: str
+    width: int
+    height: int
+    url: str
+
+
+class SegmentBox(BaseModel):
+    x: int = Field(..., ge=0)
+    y: int = Field(..., ge=0)
+    w: int = Field(..., gt=0)
+    h: int = Field(..., gt=0)
+
+
+class DetectedSegment(BaseModel):
+    index: int
+    box: SegmentBox
+
+
+class DetectSegmentsResponse(BaseModel):
+    segments: List[DetectedSegment]
+
+
+class CreateImageJobRequest(BaseModel):
+    image_id: str
+    boxes: List[SegmentBox]
+    remove_bg: bool = True
+    layout: Layout = Layout()
+
+
 class JobResponse(BaseModel):
     job_id: str
     status: JobStatus
@@ -100,6 +139,19 @@ class JobStatusResponse(BaseModel):
     progress: float
     stage: str
     params: CreateJobRequest
+    error: Optional[str] = None
+    created_at: datetime
+    finished_at: Optional[datetime] = None
+    result: Optional[dict] = None
+
+
+class ImageJobStatusResponse(BaseModel):
+    id: str
+    image_id: str
+    status: JobStatus
+    progress: float
+    stage: str
+    params: CreateImageJobRequest
     error: Optional[str] = None
     created_at: datetime
     finished_at: Optional[datetime] = None
