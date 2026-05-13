@@ -43,7 +43,7 @@ export const defaultWorkflowSettings: WorkflowSettings = {
   enableWatermark: false,
   watermarkBox: null,
   layout: {
-    cols: 8,
+    cols: 4,
     padding: 2,
   },
   layoutColsTouched: false,

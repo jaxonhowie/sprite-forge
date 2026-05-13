@@ -33,7 +33,7 @@ class WatermarkBox(BaseModel):
 
 
 class Layout(BaseModel):
-    cols: int = Field(default=8, ge=1, le=32)
+    cols: int = Field(default=4, ge=1, le=32)
     padding: int = Field(default=2, ge=0, le=20)
 
 

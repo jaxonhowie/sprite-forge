@@ -40,7 +40,7 @@ export default function Process() {
   const [removeBgMode, setRemoveBgMode] = useState<RemoveBgMode>(() => workflowState?.processSettings.removeBgMode ?? 'standard');
   const [enableWatermark, setEnableWatermark] = useState(() => workflowState?.processSettings.enableWatermark ?? false);
   const [watermarkBox, setWatermarkBox] = useState<WatermarkBox | null>(() => workflowState?.processSettings.watermarkBox ?? null);
-  const [layout, setLayout] = useState<Layout>(() => workflowState?.processSettings.layout ?? { cols: 8, padding: 2 });
+  const [layout, setLayout] = useState<Layout>(() => workflowState?.processSettings.layout ?? { cols: 4, padding: 2 });
   const [colsTouched, setColsTouched] = useState(() => workflowState?.processSettings.layoutColsTouched ?? false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -81,9 +81,6 @@ export default function Process() {
     }
 
     setTimestamps(stored ?? []);
-    if (!colsTouched && stored && stored.length > 0) {
-      setLayout(prev => ({ ...prev, cols: stored.length }));
-    }
 
     const applyMeta = (meta: { url: string; duration_ms: number }) => {
       if (!active) return;

@@ -438,15 +438,6 @@ export default function Workflow() {
         currentStep: 'frames',
         frameTimestamps: timestamps,
         frameThumbs: thumbs,
-        processSettings: {
-          ...current.processSettings,
-          layout: {
-            ...current.processSettings.layout,
-            cols: current.processSettings.layoutColsTouched
-              ? current.processSettings.layout.cols
-              : Math.max(1, Math.min(32, timestamps.length)),
-          },
-        },
         jobId: undefined,
       }));
     } catch (err) {
@@ -472,15 +463,6 @@ export default function Workflow() {
       ...current,
       frameTimestamps: timestamps,
       frameThumbs: thumbs,
-      processSettings: {
-        ...current.processSettings,
-        layout: {
-          ...current.processSettings.layout,
-          cols: current.processSettings.layoutColsTouched
-            ? current.processSettings.layout.cols
-            : Math.max(1, Math.min(32, timestamps.length)),
-        },
-      },
       jobId: undefined,
     }));
   }, [resetJob, updateWorkflow, videoMeta, workflow.jobId]);

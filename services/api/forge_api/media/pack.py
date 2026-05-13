@@ -6,7 +6,7 @@ import math
 
 def pack_grid(
     frames: List[np.ndarray],
-    cols: int = 8,
+    cols: int = 4,
     padding: int = 2,
 ) -> Tuple[Image.Image, dict]:
     if not frames:
