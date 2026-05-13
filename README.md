@@ -1,5 +1,7 @@
 # Sprite Forge
 
+[English README](./README.en.md)
+
 一个小型全栈素材处理工具，包含两条独立工作流：
 
 - `视频处理`：上传视频，自动截帧、去背景并导出精灵表。
