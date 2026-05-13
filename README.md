@@ -47,7 +47,7 @@ npm run dev:api
 
 默认情况下：
 
-- Web: `http://localhost:5173`
+- Web: `http://localhost:6284`
 - API: `http://localhost:8000`
 
 ## 构建

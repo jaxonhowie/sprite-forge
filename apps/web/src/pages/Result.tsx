@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
-import { ApiError, deleteVideo, getJobExportUrl, type EngineExportTarget } from '../api/client';
+import { ApiError, deleteVideo, getJobExportUrl, normalizeJobLighting, type EngineExportTarget } from '../api/client';
 import {
   clearWorkflow,
   createWorkflowRouteState,
@@ -44,10 +44,12 @@ export default function Result() {
   const locationState = location.state as WorkflowRouteState | null;
   const resolvedJobId = jobId ?? locationState?.jobId ?? workflowState?.jobId ?? null;
 
-  const { data: job, error, isLoading } = useSWR<JobResult>(
+  const { data: job, error, isLoading, mutate } = useSWR<JobResult>(
     resolvedJobId && !missingJob ? `/api/jobs/${resolvedJobId}` : null,
     fetcher,
-    { refreshInterval: 1000 }
+    {
+      refreshInterval: (currentJob) => currentJob?.status === 'running' ? 1000 : 0,
+    }
   );
 
   useEffect(() => {
@@ -83,7 +85,7 @@ export default function Result() {
   useEffect(() => {
     setPlayingFrameIndex(0);
     setIsPlayingFrames(false);
-  }, [job?.id]);
+  }, [job?.result?.frame_urls?.[0]]);
 
   const [exportOpen, setExportOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
@@ -127,6 +129,17 @@ export default function Result() {
     }
   }, [resolvedJobId, job]);
 
+  const handleNormalizeLighting = useCallback(async () => {
+    if (!resolvedJobId) return;
+
+    try {
+      const nextJob = await normalizeJobLighting(resolvedJobId);
+      await mutate(nextJob as unknown as JobResult, false);
+    } catch (err) {
+      console.error('统一灯光失败:', err);
+    }
+  }, [mutate, resolvedJobId]);
+
   const handleNewProject = useCallback(async () => {
     const videoIdToClear = job?.video_id ?? workflowState?.videoMeta?.video_id;
 
@@ -145,6 +158,7 @@ export default function Result() {
 
   const processedFrameUrls = job?.result?.frame_urls ?? [];
   const playingFrameUrl = processedFrameUrls[playingFrameIndex] ?? processedFrameUrls[0];
+  const isLightingInProgress = job?.stage === 'light' && job.status === 'running' && Boolean(job.result);
 
   if (isLoading) {
     return (
@@ -208,9 +222,70 @@ export default function Result() {
     const stageLabels: Record<string, string> = {
       extract: '截帧',
       inpaint: '去水印',
+      light: '统一灯光',
       rembg: '去背景',
       pack: '打包精灵表',
     };
+
+    if (isLightingInProgress) {
+      return (
+        <div className="mx-auto max-w-4xl">
+          <h2 className="mb-8 text-center text-2xl font-bold text-gray-900">处理完成</h2>
+
+          <div className="mb-8 rounded-xl border border-gray-200 p-6">
+            <h3 className="mb-4 text-lg font-bold text-gray-900">精灵表预览</h3>
+            {job.result?.spritesheet_url && (
+              <div className="transparent-preview-bg max-h-[60vh] overflow-auto rounded-lg border border-gray-100">
+                <img
+                  src={job.result.spritesheet_url}
+                  alt="精灵表"
+                  className="h-auto max-w-full"
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="mb-8 rounded-xl border border-gray-200 p-6">
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <h3 className="text-lg font-bold text-gray-900">统一灯光</h3>
+              <span className="text-sm text-gray-500">{Math.round(job.progress * 100)}%</span>
+            </div>
+            <div className="mb-3 h-3 overflow-hidden rounded-full bg-gray-200">
+              <div
+                className="h-full rounded-full bg-gray-900 transition-all"
+                style={{ width: `${Math.round(job.progress * 100)}%` }}
+              />
+            </div>
+            <div className="text-sm text-gray-600">
+              {stageLabels[job.stage] || job.stage} - 正在处理亮度和对比度
+            </div>
+          </div>
+
+          <div className="mb-8 rounded-xl border border-gray-200 p-6">
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <h3 className="text-lg font-bold text-gray-900">逐帧播放</h3>
+              <button
+                disabled
+                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                逐帧播放
+              </button>
+            </div>
+            <div className="transparent-preview-bg flex h-64 items-center justify-center rounded-lg border border-gray-100">
+              {playingFrameUrl ? (
+                <img
+                  src={playingFrameUrl}
+                  alt="处理后逐帧播放预览"
+                  className="max-h-full max-w-full object-contain"
+                />
+              ) : (
+                <div className="text-sm text-gray-400">暂无处理后帧，请重新开始处理生成逐帧预览</div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="mx-auto max-w-4xl py-20 text-center">
@@ -235,7 +310,7 @@ export default function Result() {
       <div className="mb-8 rounded-xl border border-gray-200 p-6">
         <h3 className="mb-4 text-lg font-bold text-gray-900">精灵表预览</h3>
         {job.result?.spritesheet_url && (
-          <div className="max-h-[60vh] overflow-auto rounded-lg border border-gray-100 bg-gray-50">
+          <div className="transparent-preview-bg max-h-[60vh] overflow-auto rounded-lg border border-gray-100">
             <img
               src={job.result.spritesheet_url}
               alt="精灵表"
@@ -243,6 +318,20 @@ export default function Result() {
             />
           </div>
         )}
+      </div>
+
+      <div className="mb-8 rounded-xl border border-gray-200 p-6">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <h3 className="text-lg font-bold text-gray-900">统一灯光</h3>
+          <button
+            onClick={() => void handleNormalizeLighting()}
+            disabled={!resolvedJobId}
+            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            统一灯光
+          </button>
+        </div>
+        <p className="text-sm text-gray-500">对处理后关键帧统一亮度和对比度，减少首尾帧色差。</p>
       </div>
 
       <div className="mb-8 rounded-xl border border-gray-200 p-6">
@@ -256,7 +345,7 @@ export default function Result() {
             {isPlayingFrames ? '暂停播放' : '逐帧播放'}
           </button>
         </div>
-        <div className="flex h-64 items-center justify-center rounded-lg border border-gray-100 bg-gray-50">
+        <div className="transparent-preview-bg flex h-64 items-center justify-center rounded-lg border border-gray-100">
           {playingFrameUrl ? (
             <img
               src={playingFrameUrl}

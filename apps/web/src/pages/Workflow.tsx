@@ -50,6 +50,7 @@ const steps: StepItem[] = [
 const stageLabels: Record<string, string> = {
   extract: '截帧',
   inpaint: '去水印',
+  light: '统一灯光',
   rembg: '去背景',
   pack: '打包精灵表',
   done: '完成',
@@ -262,7 +263,7 @@ export default function Workflow() {
         status: data.status ?? current?.status ?? 'running',
         progress: data.progress ?? current?.progress ?? 0,
         stage: data.stage ?? current?.stage ?? '',
-        params: current?.params ?? {
+          params: current?.params ?? {
           video_id: workflow.videoMeta?.video_id ?? '',
           timestamps_ms: workflow.frameTimestamps,
           remove_bg: settings.removeBg,
@@ -1063,7 +1064,7 @@ export default function Workflow() {
                   <div className="mb-8 rounded-xl border border-gray-200 p-6">
                     <h4 className="mb-4 font-semibold text-gray-900">精灵表预览</h4>
                     {resultStatus.result?.spritesheet_url && (
-                      <div className="max-h-[60vh] overflow-auto rounded-lg border border-gray-100 bg-gray-50">
+                      <div className="transparent-preview-bg max-h-[60vh] overflow-auto rounded-lg border border-gray-100">
                         <img
                           src={resultStatus.result.spritesheet_url}
                           alt="精灵表"
@@ -1084,7 +1085,7 @@ export default function Workflow() {
                         {isPlayingFrames ? '暂停播放' : '逐帧播放'}
                       </button>
                     </div>
-                    <div className="flex h-64 items-center justify-center rounded-lg border border-gray-100 bg-gray-50">
+                    <div className="transparent-preview-bg flex h-64 items-center justify-center rounded-lg border border-gray-100">
                       {playingFrameUrl ? (
                         <img
                           src={playingFrameUrl}
