@@ -19,6 +19,12 @@ class JobStage(str, Enum):
     PACK = "pack"
 
 
+class RemoveBgMode(str, Enum):
+    STANDARD = "standard"
+    CONSERVATIVE = "conservative"
+    WHITE = "white"
+
+
 class WatermarkBox(BaseModel):
     x: float = Field(..., ge=0, le=1)
     y: float = Field(..., ge=0, le=1)
@@ -35,6 +41,7 @@ class CreateJobRequest(BaseModel):
     video_id: str
     timestamps_ms: List[float]
     remove_bg: bool = True
+    remove_bg_mode: RemoveBgMode = RemoveBgMode.STANDARD
     watermark_box: Optional[WatermarkBox] = None
     layout: Layout = Layout()
 

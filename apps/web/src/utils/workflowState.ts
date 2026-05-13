@@ -4,6 +4,7 @@ export type WorkflowStep = 'upload' | 'capture' | 'frames' | 'settings' | 'resul
 
 export interface WorkflowSettings {
   removeBg: boolean;
+  removeBgMode: 'standard' | 'conservative' | 'white';
   enableWatermark: boolean;
   watermarkBox: {
     x: number;
@@ -38,6 +39,7 @@ const frameKey = (videoId: string) => `frames_${videoId}`;
 
 export const defaultWorkflowSettings: WorkflowSettings = {
   removeBg: true,
+  removeBgMode: 'standard',
   enableWatermark: false,
   watermarkBox: null,
   layout: {

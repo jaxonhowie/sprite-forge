@@ -263,10 +263,11 @@ export default function Workflow() {
         status: data.status ?? current?.status ?? 'running',
         progress: data.progress ?? current?.progress ?? 0,
         stage: data.stage ?? current?.stage ?? '',
-          params: current?.params ?? {
+        params: current?.params ?? {
           video_id: workflow.videoMeta?.video_id ?? '',
           timestamps_ms: workflow.frameTimestamps,
           remove_bg: settings.removeBg,
+          remove_bg_mode: settings.removeBgMode,
           watermark_box: settings.enableWatermark ? settings.watermarkBox : null,
           layout: settings.layout,
         },
@@ -526,6 +527,7 @@ export default function Workflow() {
         video_id: videoMeta.video_id,
         timestamps_ms: workflow.frameTimestamps,
         remove_bg: settings.removeBg,
+        remove_bg_mode: settings.removeBgMode,
         watermark_box: settings.enableWatermark ? settings.watermarkBox : null,
         layout: settings.layout,
       });
@@ -943,8 +945,52 @@ export default function Workflow() {
                       onChange={(event) => updateSettings({ ...settings, removeBg: event.target.checked })}
                       className="h-5 w-5 rounded border-gray-300"
                     />
-                    <span className="text-gray-700">去除背景 (rembg)</span>
+                    <span className="text-gray-700">去除背景</span>
                   </label>
+
+                  {settings.removeBg && (
+                    <div className="rounded-lg border border-gray-200 bg-white p-4">
+                      <div className="mb-3 text-sm font-medium text-gray-700">去背景模式</div>
+                      <div className="space-y-3">
+                        <label className="flex cursor-pointer items-start gap-3">
+                          <input
+                            type="radio"
+                            name="workflow-remove-bg-mode"
+                            checked={settings.removeBgMode === 'standard'}
+                            onChange={() => updateSettings({ ...settings, removeBgMode: 'standard' })}
+                            className="mt-0.5 h-4 w-4 border-gray-300"
+                          />
+                          <span className="text-sm text-gray-600">
+                            标准：边缘更干净，适合普通角色和道具。
+                          </span>
+                        </label>
+                        <label className="flex cursor-pointer items-start gap-3">
+                          <input
+                            type="radio"
+                            name="workflow-remove-bg-mode"
+                            checked={settings.removeBgMode === 'conservative'}
+                            onChange={() => updateSettings({ ...settings, removeBgMode: 'conservative' })}
+                            className="mt-0.5 h-4 w-4 border-gray-300"
+                          />
+                          <span className="text-sm text-gray-600">
+                            保守：输出更宽松的透明边缘，优先保留弧光、残影和发光特效。
+                          </span>
+                        </label>
+                        <label className="flex cursor-pointer items-start gap-3">
+                          <input
+                            type="radio"
+                            name="workflow-remove-bg-mode"
+                            checked={settings.removeBgMode === 'white'}
+                            onChange={() => updateSettings({ ...settings, removeBgMode: 'white' })}
+                            className="mt-0.5 h-4 w-4 border-gray-300"
+                          />
+                          <span className="text-sm text-gray-600">
+                            单一背景：仅去除纯白或近纯白背景，尽量保留彩色发光和特效边缘。
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
 
                   <label className="flex cursor-pointer items-center gap-3">
                     <input
@@ -1063,7 +1109,27 @@ export default function Workflow() {
                 <>
                   <div className="mb-8 rounded-xl border border-gray-200 p-6">
                     <h4 className="mb-4 font-semibold text-gray-900">精灵表预览</h4>
-                    {resultStatus.result?.spritesheet_url && (
+                    {processedFrameUrls.length > 0 ? (
+                      <div className="rounded-lg border border-gray-100 bg-white p-3">
+                        <div className="overflow-x-auto pb-3">
+                          <div className="flex w-max gap-3">
+                            {processedFrameUrls.map((frameUrl, index) => (
+                              <div key={frameUrl} className="w-32 flex-none">
+                                <div className="mb-2 text-center text-xs text-gray-500">#{index + 1}</div>
+                                <div className="transparent-preview-bg flex h-32 w-32 items-center justify-center rounded-lg border border-gray-200 p-2">
+                                  <img
+                                    src={frameUrl}
+                                    alt={`精灵帧 ${index + 1}`}
+                                    className="max-h-full max-w-full object-contain"
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-400">帧数较多时可拖动下方滚动条横向查看。</div>
+                      </div>
+                    ) : resultStatus.result?.spritesheet_url ? (
                       <div className="transparent-preview-bg max-h-[60vh] overflow-auto rounded-lg border border-gray-100">
                         <img
                           src={resultStatus.result.spritesheet_url}
@@ -1071,7 +1137,7 @@ export default function Workflow() {
                           className="h-auto max-w-full"
                         />
                       </div>
-                    )}
+                    ) : null}
                   </div>
 
                   <div className="mb-8 rounded-xl border border-gray-200 p-6">

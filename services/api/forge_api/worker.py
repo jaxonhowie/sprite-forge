@@ -226,13 +226,17 @@ async def process_job(
         if params.remove_bg:
             store.update_job(job_id, stage="rembg", progress=0.0)
             if on_progress:
+                loading_message = "加载去背景模型..."
+                if params.remove_bg_mode.value == "white":
+                    loading_message = "准备纯白背景去除..."
                 await on_progress(JobProgress(
                     stage="rembg",
                     progress=0.0,
-                    message="加载去背景模型...",
+                    message=loading_message,
                 ))
 
-            await asyncio.to_thread(preload_model)
+            if params.remove_bg_mode.value != "white":
+                await asyncio.to_thread(preload_model)
 
             processed_frames = []
             for i, frame in enumerate(frames):
@@ -243,7 +247,11 @@ async def process_job(
                         progress=progress,
                         message=f"去背景 {i + 1}/{total}",
                     ))
-                rgba_frame = await asyncio.to_thread(remove_background, frame)
+                rgba_frame = await asyncio.to_thread(
+                    remove_background,
+                    frame,
+                    params.remove_bg_mode.value,
+                )
                 processed_frames.append(rgba_frame)
                 store.update_job(job_id, progress=progress, stage="rembg")
             frames = processed_frames

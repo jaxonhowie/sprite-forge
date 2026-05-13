@@ -52,6 +52,7 @@ export interface CreateJobRequest {
   video_id: string;
   timestamps_ms: number[];
   remove_bg: boolean;
+  remove_bg_mode: 'standard' | 'conservative' | 'white';
   watermark_box: {
     x: number;
     y: number;

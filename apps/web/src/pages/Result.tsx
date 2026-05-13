@@ -309,7 +309,27 @@ export default function Result() {
 
       <div className="mb-8 rounded-xl border border-gray-200 p-6">
         <h3 className="mb-4 text-lg font-bold text-gray-900">精灵表预览</h3>
-        {job.result?.spritesheet_url && (
+        {processedFrameUrls.length > 0 ? (
+          <div className="rounded-lg border border-gray-100 bg-white p-3">
+            <div className="overflow-x-auto pb-3">
+              <div className="flex w-max gap-3">
+                {processedFrameUrls.map((frameUrl, index) => (
+                              <div key={frameUrl} className="w-32 flex-none">
+                                <div className="mb-2 text-center text-xs text-gray-500">#{index + 1}</div>
+                                <div className="transparent-preview-bg flex h-32 w-32 items-center justify-center rounded-lg border border-gray-200 p-2">
+                                  <img
+                                    src={frameUrl}
+                                    alt={`精灵帧 ${index + 1}`}
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="text-xs text-gray-400">帧数较多时可拖动下方滚动条横向查看。</div>
+          </div>
+        ) : job.result?.spritesheet_url ? (
           <div className="transparent-preview-bg max-h-[60vh] overflow-auto rounded-lg border border-gray-100">
             <img
               src={job.result.spritesheet_url}
@@ -317,7 +337,7 @@ export default function Result() {
               className="h-auto max-w-full"
             />
           </div>
-        )}
+        ) : null}
       </div>
 
       <div className="mb-8 rounded-xl border border-gray-200 p-6">

@@ -24,26 +24,29 @@ interface Layout {
   padding: number;
 }
 
+type RemoveBgMode = 'standard' | 'conservative' | 'white';
+
 export default function Process() {
   const { videoId } = useParams<{ videoId: string }>();
   const location = useLocation();
   const navigate = useNavigate();
+  const [workflowState] = useState(() => getWorkflowState());
 
   const [timestamps, setTimestamps] = useState<number[]>([]);
   const [thumbnails, setThumbnails] = useState<Map<number, string>>(new Map());
   const [videoUrl, setVideoUrl] = useState('');
   const [metadataDuration, setMetadataDuration] = useState(0);
-  const [removeBg, setRemoveBg] = useState(true);
-  const [enableWatermark, setEnableWatermark] = useState(false);
-  const [watermarkBox, setWatermarkBox] = useState<WatermarkBox | null>(null);
-  const [layout, setLayout] = useState<Layout>({ cols: 8, padding: 2 });
-  const [colsTouched, setColsTouched] = useState(false);
+  const [removeBg, setRemoveBg] = useState(() => workflowState?.processSettings.removeBg ?? true);
+  const [removeBgMode, setRemoveBgMode] = useState<RemoveBgMode>(() => workflowState?.processSettings.removeBgMode ?? 'standard');
+  const [enableWatermark, setEnableWatermark] = useState(() => workflowState?.processSettings.enableWatermark ?? false);
+  const [watermarkBox, setWatermarkBox] = useState<WatermarkBox | null>(() => workflowState?.processSettings.watermarkBox ?? null);
+  const [layout, setLayout] = useState<Layout>(() => workflowState?.processSettings.layout ?? { cols: 8, padding: 2 });
+  const [colsTouched, setColsTouched] = useState(() => workflowState?.processSettings.layoutColsTouched ?? false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [workflowState] = useState(() => getWorkflowState());
 
   const wsRef = useRef<WebSocket | null>(null);
   const locationState = location.state as WorkflowRouteState | null;
@@ -160,6 +163,7 @@ export default function Process() {
         video_id: resolvedVideoId,
         timestamps_ms: timestamps,
         remove_bg: removeBg,
+        remove_bg_mode: removeBgMode,
         watermark_box: enableWatermark ? watermarkBox : null,
         layout,
       });
@@ -170,6 +174,7 @@ export default function Process() {
         videoMeta: seededMeta ?? workflowState?.videoMeta,
         processSettings: {
           removeBg,
+          removeBgMode,
           enableWatermark,
           watermarkBox,
           layout,
@@ -219,7 +224,7 @@ export default function Process() {
       setError(err instanceof Error ? err.message : '处理失败');
       setIsProcessing(false);
     }
-  }, [enableWatermark, isProcessing, layout, navigate, removeBg, resolvedVideoId, timestamps, watermarkBox]);
+  }, [enableWatermark, isProcessing, layout, navigate, removeBg, removeBgMode, resolvedVideoId, timestamps, watermarkBox]);
 
   useEffect(() => {
     return () => {
@@ -351,8 +356,52 @@ export default function Process() {
                   onChange={(e) => setRemoveBg(e.target.checked)}
                   className="h-5 w-5 rounded border-gray-300"
                 />
-                <span className="text-base text-gray-700">去除背景 (rembg)</span>
+                <span className="text-base text-gray-700">去除背景</span>
               </label>
+
+              {removeBg && (
+                <div className="ml-8 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <div className="mb-3 text-sm font-medium text-gray-700">去背景模式</div>
+                  <div className="space-y-3">
+                    <label className="flex cursor-pointer items-start gap-3">
+                      <input
+                        type="radio"
+                        name="remove-bg-mode"
+                        checked={removeBgMode === 'standard'}
+                        onChange={() => setRemoveBgMode('standard')}
+                        className="mt-0.5 h-4 w-4 border-gray-300"
+                      />
+                      <span className="text-sm text-gray-600">
+                        标准：边缘更干净，适合普通角色和道具。
+                      </span>
+                    </label>
+                    <label className="flex cursor-pointer items-start gap-3">
+                      <input
+                        type="radio"
+                        name="remove-bg-mode"
+                        checked={removeBgMode === 'conservative'}
+                        onChange={() => setRemoveBgMode('conservative')}
+                        className="mt-0.5 h-4 w-4 border-gray-300"
+                      />
+                      <span className="text-sm text-gray-600">
+                        保守：输出更宽松的透明边缘，优先保留弧光、残影和发光特效。
+                      </span>
+                    </label>
+                    <label className="flex cursor-pointer items-start gap-3">
+                      <input
+                        type="radio"
+                        name="remove-bg-mode"
+                        checked={removeBgMode === 'white'}
+                        onChange={() => setRemoveBgMode('white')}
+                        className="mt-0.5 h-4 w-4 border-gray-300"
+                      />
+                      <span className="text-sm text-gray-600">
+                        单一背景：仅去除纯白或近纯白背景，尽量保留彩色发光和特效边缘。
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              )}
 
               <label className="flex cursor-pointer items-center gap-3">
                 <input

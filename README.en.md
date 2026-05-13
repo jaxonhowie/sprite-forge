@@ -7,6 +7,8 @@ Sprite Forge is a small full-stack asset processing tool with two independent wo
 - `Video Processing`: upload a video, extract frames automatically, remove backgrounds, and export a sprite sheet.
 - `Image Slicing`: upload a white-background asset sheet, detect isolated items automatically, remove each background, and export the results.
 
+> For personal interest use only. Commercial use is not allowed.
+
 ## Tech Stack
 
 - Frontend: React 18, TypeScript, Vite, React Router, SWR, Tailwind CSS

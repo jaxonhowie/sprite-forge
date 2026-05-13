@@ -45,7 +45,8 @@ function App() {
       </main>
 
       <footer className="border-t border-gray-100 py-6 text-center text-sm text-gray-400">
-        &copy; 2026 Sprite Forge
+        <div>&copy; 2026 Sprite Forge</div>
+        <div className="mt-1">仅个人兴趣使用，请勿商用</div>
       </footer>
     </div>
   );
