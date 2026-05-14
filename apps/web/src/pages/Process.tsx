@@ -41,7 +41,7 @@ export default function Process() {
   const [enableWatermark, setEnableWatermark] = useState(() => workflowState?.processSettings.enableWatermark ?? false);
   const [watermarkBox, setWatermarkBox] = useState<WatermarkBox | null>(() => workflowState?.processSettings.watermarkBox ?? null);
   const [layout, setLayout] = useState<Layout>(() => workflowState?.processSettings.layout ?? { cols: 4, padding: 2 });
-  const [colsTouched, setColsTouched] = useState(() => workflowState?.processSettings.layoutColsTouched ?? false);
+  const [, setColsTouched] = useState(() => workflowState?.processSettings.layoutColsTouched ?? false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState('');

@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .models import (
     CreateJobRequest,
     CreateImageJobRequest,
+    CreateFrameAssemblyJobRequest,
     ExtractFramesRequest,
     ExtractFramesResponse,
     ExtractedFramePreview,
@@ -23,12 +24,13 @@ from .models import (
     ImageJobStatusResponse,
     JobProgress,
     JobStatus,
+    RepackJobFramesRequest,
 )
 from . import store
 from .exporters import build_engine_export, build_image_export
 from .media.extract import extract_frame_with_retry, get_video_info, save_frame_preview
 from .media.segment import detect_segments
-from .worker import normalize_job_lighting, process_job, process_image_job
+from .worker import normalize_job_lighting, process_job, process_frame_assembly_job, process_image_job, repack_job_frames
 
 
 app = FastAPI(title="Sprite Forge API", version="0.1.0")
@@ -279,6 +281,12 @@ async def delete_image(image_id: str):
     return {"message": "删除成功"}
 
 
+@app.post("/api/runtime/clear")
+async def clear_runtime():
+    store.clear_runtime_data()
+    return {"message": "清理成功"}
+
+
 @app.post("/api/jobs", response_model=JobResponse)
 async def create_job(
     request: CreateJobRequest,
@@ -312,6 +320,33 @@ async def create_image_job(
     return JobResponse(job_id=job.id, status=job.status)
 
 
+@app.post("/api/frame-assembly-jobs", response_model=JobResponse)
+async def create_frame_assembly_job(
+    request: CreateFrameAssemblyJobRequest,
+    background_tasks: BackgroundTasks,
+):
+    if not request.frames:
+        raise HTTPException(400, "至少需要一个关键帧")
+
+    for frame in request.frames:
+        if not store.get_video_meta(frame.video_id) or not store.get_video_path(frame.video_id):
+            raise HTTPException(404, f"视频不存在: {frame.video_id}")
+
+    primary_video_id = request.frames[0].video_id
+    job_params = CreateJobRequest(
+        video_id=primary_video_id,
+        timestamps_ms=[frame.ts_ms for frame in request.frames],
+        remove_bg=request.remove_bg,
+        remove_bg_mode=request.remove_bg_mode,
+        watermark_box=None,
+        layout=request.layout,
+    )
+    job = store.create_job(primary_video_id, job_params)
+    background_tasks.add_task(run_frame_assembly_job_background, job.id, request)
+
+    return JobResponse(job_id=job.id, status=job.status)
+
+
 async def run_job_background(job_id: str):
     try:
         await process_job(job_id)
@@ -324,6 +359,13 @@ async def run_image_job_background(job_id: str):
         await process_image_job(job_id)
     except Exception as e:
         print(f"图片任务 {job_id} 执行失败: {e}")
+
+
+async def run_frame_assembly_job_background(job_id: str, request: CreateFrameAssemblyJobRequest):
+    try:
+        await process_frame_assembly_job(job_id, request)
+    except Exception as e:
+        print(f"拼帧任务 {job_id} 执行失败: {e}")
 
 
 async def run_light_normalization_background(job_id: str):
@@ -369,6 +411,25 @@ async def normalize_job(job_id: str, background_tasks: BackgroundTasks):
     return updated_job
 
 
+@app.post("/api/jobs/{job_id}/frames:repack", response_model=JobStatusResponse)
+async def repack_job(job_id: str, request: RepackJobFramesRequest):
+    job = store.get_job(job_id)
+    if not job:
+        raise HTTPException(404, "任务不存在")
+    if job.status != JobStatus.DONE:
+        raise HTTPException(400, "任务尚未完成")
+
+    try:
+        await repack_job_frames(job_id, request.frame_names, request.frame_offsets)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    updated_job = store.get_job(job_id)
+    if not updated_job:
+        raise HTTPException(500, "任务状态更新失败")
+    return updated_job
+
+
 @app.delete("/api/jobs/{job_id}")
 async def delete_job(job_id: str):
     success = store.delete_job(job_id)
@@ -381,7 +442,7 @@ async def delete_job(job_id: str):
 async def export_job(
     job_id: str,
     background_tasks: BackgroundTasks,
-    target: Literal["generic", "cocos", "unity", "godot"] = "generic",
+    target: Literal["generic", "cocos", "unity", "godot", "frames"] = "generic",
 ):
     job = store.get_job(job_id)
     if not job:
@@ -391,11 +452,16 @@ async def export_job(
     if not job_dir:
         raise HTTPException(404, "任务目录不存在")
 
-    sheet_path = job_dir / "spritesheet.png"
-    meta_path = job_dir / "spritesheet.json"
+    frames_dir = job_dir / "frames"
+    if target == "frames" and not any(frames_dir.glob("*.png")):
+        raise HTTPException(400, "逐帧 PNG 尚未生成")
 
-    if not sheet_path.exists() or not meta_path.exists():
-        raise HTTPException(400, "精灵表尚未生成")
+    if target != "frames":
+        sheet_path = job_dir / "spritesheet.png"
+        meta_path = job_dir / "spritesheet.json"
+
+        if not sheet_path.exists() or not meta_path.exists():
+            raise HTTPException(400, "精灵表尚未生成")
 
     zip_path = store.TMP_DIR / f"{job_id}_{target}_export.zip"
     build_engine_export(job_id, job_dir, zip_path, target)
@@ -490,7 +556,7 @@ app.mount("/files", StaticFiles(directory=str(store.DATA_DIR)), name="files")
 @app.on_event("startup")
 async def startup():
     store.ensure_dirs()
-    store.cleanup_tmp_dir()
+    store.clear_runtime_data()
 
 
 if __name__ == "__main__":

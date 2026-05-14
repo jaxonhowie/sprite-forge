@@ -150,3 +150,14 @@ export function clearWorkflow(videoId?: string): void {
     sessionStorage.removeItem(frameKey(videoId));
   }
 }
+
+export function clearAllWorkflowState(): void {
+  sessionStorage.removeItem(workflowKey);
+
+  for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+    const key = sessionStorage.key(index);
+    if (key?.startsWith('frames_')) {
+      sessionStorage.removeItem(key);
+    }
+  }
+}

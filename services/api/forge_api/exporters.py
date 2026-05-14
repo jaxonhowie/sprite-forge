@@ -7,7 +7,7 @@ from typing import Literal
 from PIL import Image
 
 
-ExportTarget = Literal["generic", "cocos", "unity", "godot"]
+ExportTarget = Literal["generic", "cocos", "unity", "godot", "frames"]
 
 ANIMATION_FPS = 12
 
@@ -276,9 +276,19 @@ def _build_godot_tres(meta: dict) -> str:
 
 
 def build_engine_export(job_id: str, job_dir: Path, zip_path: Path, target: ExportTarget) -> None:
-    meta = _read_meta(job_dir)
-    sheet_size = _sheet_size(job_dir)
     zip_path.unlink(missing_ok=True)
+
+    if target == "frames":
+        frames_dir = job_dir / "frames"
+        frame_paths = sorted(frames_dir.glob("*.png"))
+        if not frame_paths:
+            raise ValueError("没有可导出的逐帧 PNG")
+
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+            root = f"frames_{job_id}"
+            for frame_path in frame_paths:
+                archive.write(frame_path, f"{root}/{frame_path.name}")
+        return
 
     if target == "generic":
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -286,6 +296,9 @@ def build_engine_export(job_id: str, job_dir: Path, zip_path: Path, target: Expo
                 if path.is_file():
                     archive.write(path, path.relative_to(job_dir))
         return
+
+    meta = _read_meta(job_dir)
+    sheet_size = _sheet_size(job_dir)
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
         if target == "cocos":

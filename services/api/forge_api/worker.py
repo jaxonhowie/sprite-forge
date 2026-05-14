@@ -2,11 +2,19 @@ import asyncio
 import json
 from pathlib import Path
 from typing import Optional, Callable, Awaitable
+import time
 
 import numpy as np
 from PIL import Image
 
-from .models import JobStatus, JobProgress, CreateJobRequest, CreateImageJobRequest
+from .models import (
+    JobStatus,
+    JobProgress,
+    CreateJobRequest,
+    CreateImageJobRequest,
+    CreateFrameAssemblyJobRequest,
+    FrameOffset,
+)
 from . import store
 from .media.extract import extract_frame_with_retry
 from .media.inpaint import build_mask, inpaint_frame
@@ -53,6 +61,8 @@ def _write_job_outputs(
 ) -> dict:
     frames_dir = job_dir / "frames"
     frames_dir.mkdir(exist_ok=True)
+    for frame_path in frames_dir.glob("*.png"):
+        frame_path.unlink()
 
     sheet, meta = pack_grid(
         frames,
@@ -149,6 +159,22 @@ def _write_image_job_outputs(
         json.dump(manifest, f, ensure_ascii=False, indent=2)
 
     return _build_image_job_result(job_id)
+
+
+def _apply_frame_offset(frame: np.ndarray, x_offset: int, y_offset: int) -> np.ndarray:
+    if x_offset == 0 and y_offset == 0:
+        return frame
+
+    if frame.ndim == 3 and frame.shape[2] == 4:
+        image = Image.fromarray(frame, "RGBA")
+    elif frame.ndim == 3 and frame.shape[2] == 3:
+        image = Image.fromarray(frame, "RGB").convert("RGBA")
+    else:
+        image = Image.fromarray(frame).convert("RGBA")
+
+    shifted = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    shifted.paste(image, (x_offset, y_offset), image)
+    return np.array(shifted)
 
 
 async def process_job(
@@ -419,6 +445,203 @@ async def process_image_job(
         raise
 
 
+async def process_frame_assembly_job(
+    job_id: str,
+    request: CreateFrameAssemblyJobRequest,
+    on_progress: Optional[Callable[[JobProgress], Awaitable[None]]] = None,
+):
+    job = store.get_job(job_id)
+    if not job:
+        raise ValueError(f"任务不存在: {job_id}")
+
+    if not request.frames:
+        raise ValueError("没有可处理的帧")
+
+    job_dir = store.get_job_dir(job_id)
+    if not job_dir:
+        raise ValueError(f"任务目录不存在: {job_id}")
+
+    store.update_job(job_id, status=JobStatus.RUNNING, stage="extract", progress=0.0)
+
+    total = len(request.frames)
+    frames = []
+    actual_timestamps: list[int] = []
+
+    try:
+        for i, frame_source in enumerate(request.frames):
+            video_path = store.get_video_path(frame_source.video_id)
+            video_meta = store.get_video_meta(frame_source.video_id)
+            if not video_path or not video_meta:
+                raise ValueError(f"视频不存在: {frame_source.video_id}")
+
+            progress = (i + 0.5) / max(total, 1) * 0.45
+            if on_progress:
+                await on_progress(JobProgress(
+                    stage="extract",
+                    progress=progress,
+                    message=f"截帧 {i + 1}/{total}",
+                ))
+
+            frame, actual_ts = await asyncio.to_thread(
+                extract_frame_with_retry,
+                video_path,
+                frame_source.ts_ms,
+                video_meta.duration_ms,
+                video_meta.fps,
+            )
+            frames.append(frame)
+            actual_timestamps.append(int(round(actual_ts)))
+            store.update_job(job_id, progress=progress, stage="extract")
+
+        if request.remove_bg:
+            store.update_job(job_id, stage="rembg", progress=0.45)
+            if on_progress:
+                loading_message = "加载去背景模型..."
+                if request.remove_bg_mode.value == "white":
+                    loading_message = "准备纯白背景去除..."
+                await on_progress(JobProgress(stage="rembg", progress=0.45, message=loading_message))
+
+            if request.remove_bg_mode.value != "white":
+                await asyncio.to_thread(preload_model)
+
+            processed_frames = []
+            for i, frame in enumerate(frames):
+                progress = 0.45 + ((i + 0.5) / max(total, 1) * 0.4)
+                if on_progress:
+                    await on_progress(JobProgress(
+                        stage="rembg",
+                        progress=progress,
+                        message=f"去背景 {i + 1}/{total}",
+                    ))
+                rgba_frame = await asyncio.to_thread(
+                    remove_background,
+                    frame,
+                    request.remove_bg_mode.value,
+                )
+                processed_frames.append(rgba_frame)
+                store.update_job(job_id, progress=progress, stage="rembg")
+            frames = processed_frames
+
+        if any(frame_source.x_offset != 0 or frame_source.y_offset != 0 for frame_source in request.frames):
+            frames = [
+                _apply_frame_offset(frame, frame_source.x_offset, frame_source.y_offset)
+                for frame, frame_source in zip(frames, request.frames)
+            ]
+
+        store.update_job(job_id, stage="pack", progress=0.9)
+        if on_progress:
+            await on_progress(JobProgress(stage="pack", progress=0.9, message="打包精灵表..."))
+
+        result = _write_job_outputs(
+            job_id,
+            job_dir,
+            frames,
+            actual_timestamps,
+            request.layout.cols,
+            request.layout.padding,
+        )
+        result["video_ids"] = list(dict.fromkeys(frame.video_id for frame in request.frames))
+
+        store.update_job(
+            job_id,
+            status=JobStatus.DONE,
+            progress=1.0,
+            stage="done",
+            result=result,
+        )
+
+        if on_progress:
+            await on_progress(JobProgress(
+                stage="done",
+                progress=1.0,
+                message="处理完成",
+                status=JobStatus.DONE,
+            ))
+    except Exception as e:
+        error_msg = str(e)
+        store.update_job(job_id, status=JobStatus.FAILED, error=error_msg)
+
+        if on_progress:
+            await on_progress(JobProgress(
+                stage="error",
+                progress=0.0,
+                message=f"处理失败: {error_msg}",
+                status=JobStatus.FAILED,
+                error=error_msg,
+            ))
+
+        raise
+
+
+async def repack_job_frames(
+    job_id: str,
+    frame_names: list[str],
+    frame_offsets: Optional[dict[str, FrameOffset]] = None,
+) -> dict:
+    job = store.get_job(job_id)
+    if not job:
+        raise ValueError(f"任务不存在: {job_id}")
+    if job.status != JobStatus.DONE:
+        raise ValueError("任务尚未完成")
+    if not frame_names:
+        raise ValueError("至少需要保留一个关键帧")
+
+    job_dir = store.get_job_dir(job_id)
+    if not job_dir:
+        raise ValueError(f"任务目录不存在: {job_id}")
+
+    frames_dir = job_dir / "frames"
+    meta_path = job_dir / "spritesheet.json"
+    if not frames_dir.exists() or not meta_path.exists():
+        raise ValueError("处理后帧尚未生成")
+
+    with open(meta_path, "r", encoding="utf-8") as f:
+        meta = json.load(f)
+
+    timestamps_by_name: dict[str, int] = {}
+    for index, frame_meta in enumerate(meta.get("frames", [])):
+        timestamps_by_name[f"{index:04d}.png"] = int(frame_meta.get("ts_ms", 0))
+
+    frames: list[np.ndarray] = []
+    actual_timestamps: list[int] = []
+    for frame_name in frame_names:
+        if Path(frame_name).name != frame_name or not frame_name.endswith(".png"):
+            raise ValueError("帧文件名无效")
+
+        frame_path = frames_dir / frame_name
+        if not frame_path.exists():
+            raise ValueError(f"帧不存在: {frame_name}")
+
+        with Image.open(frame_path) as image:
+            frame = np.array(image.convert("RGBA"))
+
+        offset = (frame_offsets or {}).get(frame_name)
+        if offset and (offset.x != 0 or offset.y != 0):
+            frame = _apply_frame_offset(frame, offset.x, offset.y)
+
+        frames.append(frame)
+        actual_timestamps.append(timestamps_by_name.get(frame_name, 0))
+
+    version = str(int(time.time() * 1000))
+    result = _write_job_outputs(
+        job_id,
+        job_dir,
+        frames,
+        actual_timestamps,
+        job.params.layout.cols,
+        job.params.layout.padding,
+        version=version,
+    )
+    if job.result and job.result.get("video_ids"):
+        result["video_ids"] = job.result["video_ids"]
+
+    updated_job = store.update_job(job_id, result=result, progress=1.0, stage="done")
+    if not updated_job:
+        raise ValueError("任务状态更新失败")
+
+    return result
+
+
 async def normalize_job_lighting(
     job_id: str,
     on_progress: Optional[Callable[[JobProgress], Awaitable[None]]] = None,
@@ -483,6 +706,8 @@ async def normalize_job_lighting(
             job.params.layout.padding,
             version=version,
         )
+        if current_result and current_result.get("video_ids"):
+            result["video_ids"] = current_result["video_ids"]
 
         store.update_job(
             job_id,

@@ -80,6 +80,28 @@ export interface CreateImageJobRequest {
   };
 }
 
+export interface FrameAssemblySource {
+  video_id: string;
+  ts_ms: number;
+  x_offset: number;
+  y_offset: number;
+}
+
+export interface CreateFrameAssemblyJobRequest {
+  frames: FrameAssemblySource[];
+  remove_bg: boolean;
+  remove_bg_mode: 'standard' | 'conservative' | 'white';
+  layout: {
+    cols: number;
+    padding: number;
+  };
+}
+
+export interface FrameOffset {
+  x: number;
+  y: number;
+}
+
 export interface JobStatus {
   id: string;
   video_id: string;
@@ -94,6 +116,7 @@ export interface JobStatus {
     spritesheet_url: string;
     json_url: string;
     frame_urls?: string[];
+    video_ids?: string[];
   };
 }
 
@@ -115,7 +138,7 @@ export interface ImageJobStatus {
   };
 }
 
-export type EngineExportTarget = 'generic' | 'cocos' | 'unity' | 'godot';
+export type EngineExportTarget = 'generic' | 'cocos' | 'unity' | 'godot' | 'frames';
 
 const BASE_URL = '';
 
@@ -244,6 +267,13 @@ export async function createImageJob(jobData: CreateImageJobRequest): Promise<Jo
   });
 }
 
+export async function createFrameAssemblyJob(jobData: CreateFrameAssemblyJobRequest): Promise<JobResponse> {
+  return request<JobResponse>('/api/frame-assembly-jobs', {
+    method: 'POST',
+    body: JSON.stringify(jobData),
+  });
+}
+
 export async function getJobStatus(jobId: string): Promise<JobStatus> {
   return request<JobStatus>(`/api/jobs/${jobId}`);
 }
@@ -255,6 +285,20 @@ export async function getImageJobStatus(jobId: string): Promise<ImageJobStatus> 
 export async function normalizeJobLighting(jobId: string): Promise<JobStatus> {
   return request<JobStatus>(`/api/jobs/${jobId}/normalize-lighting`, {
     method: 'POST',
+  });
+}
+
+export async function repackJobFrames(
+  jobId: string,
+  frameNames: string[],
+  frameOffsets: Record<string, FrameOffset> = {}
+): Promise<JobStatus> {
+  return request<JobStatus>(`/api/jobs/${jobId}/frames:repack`, {
+    method: 'POST',
+    body: JSON.stringify({
+      frame_names: frameNames,
+      frame_offsets: frameOffsets,
+    }),
   });
 }
 
@@ -273,6 +317,12 @@ export async function deleteVideo(videoId: string): Promise<void> {
 export async function deleteImage(imageId: string): Promise<void> {
   await request(`/api/images/${imageId}`, {
     method: 'DELETE',
+  });
+}
+
+export async function clearRuntimeData(): Promise<void> {
+  await request('/api/runtime/clear', {
+    method: 'POST',
   });
 }
 

@@ -105,3 +105,7 @@ export function mergeImageWorkflowState(
 export function clearImageWorkflow(): void {
   sessionStorage.removeItem(imageWorkflowKey);
 }
+
+export function clearAllImageWorkflowState(): void {
+  sessionStorage.removeItem(imageWorkflowKey);
+}

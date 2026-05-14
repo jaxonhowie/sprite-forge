@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import useSWR from 'swr';
-import { ApiError, deleteImage, getImageJobExportUrl, type ImageJobStatus } from '../api/client';
+import { ApiError, clearRuntimeData, deleteImage, getImageJobExportUrl, type ImageJobStatus } from '../api/client';
 import {
   clearImageWorkflow,
+  clearAllImageWorkflowState,
   createImageWorkflowRouteState,
   getImageWorkflowState,
   mergeImageWorkflowState,
   type ImageWorkflowRouteState,
 } from '../utils/imageWorkflowState';
+import { clearAllWorkflowState } from '../utils/workflowState';
 
 const fetcher = async (url: string) => {
   const response = await fetch(url);
@@ -77,14 +79,22 @@ export default function ImageResult() {
 
   const handleRestart = useCallback(async () => {
     const imageId = job?.image_id ?? workflowState?.imageMeta?.image_id;
-    clearImageWorkflow();
-    if (imageId) {
-      try {
-        await deleteImage(imageId);
-      } catch {
-        // Ignore cleanup failure and return home.
+
+    try {
+      await clearRuntimeData();
+    } catch {
+      clearImageWorkflow();
+      if (imageId) {
+        try {
+          await deleteImage(imageId);
+        } catch {
+          // Ignore cleanup failure and return home.
+        }
       }
     }
+
+    clearAllWorkflowState();
+    clearAllImageWorkflowState();
     navigate('/', { state: createImageWorkflowRouteState() });
   }, [job?.image_id, navigate, workflowState?.imageMeta?.image_id]);
 

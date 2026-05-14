@@ -1,4 +1,5 @@
-import { Link, Navigate, Route, Routes } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { clearRuntimeData } from './api/client';
 import Home from './pages/Home';
 import Upload from './pages/Upload';
 import Capture from './pages/Capture';
@@ -8,8 +9,25 @@ import Result from './pages/Result';
 import ImageUpload from './pages/ImageUpload';
 import ImageSegments from './pages/ImageSegments';
 import ImageResult from './pages/ImageResult';
+import MultiVideoCompose from './pages/MultiVideoCompose';
+import { clearAllImageWorkflowState } from './utils/imageWorkflowState';
+import { clearAllWorkflowState } from './utils/workflowState';
 
 function App() {
+  const navigate = useNavigate();
+
+  async function handleFeatureEntry(path: string) {
+    try {
+      await clearRuntimeData();
+    } catch {
+      // Keep navigation usable even if cleanup fails.
+    }
+
+    clearAllWorkflowState();
+    clearAllImageWorkflowState();
+    navigate(path);
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-white text-gray-900">
       <header className="border-b border-gray-200 bg-white">
@@ -23,8 +41,15 @@ function App() {
           </Link>
           <nav className="flex items-center gap-6 text-sm font-medium text-gray-600">
             <Link className="transition-colors hover:text-gray-900" to="/">首页</Link>
-            <Link className="transition-colors hover:text-gray-900" to="/video">视频处理</Link>
-            <Link className="transition-colors hover:text-gray-900" to="/image">图片切图</Link>
+            <button type="button" onClick={() => void handleFeatureEntry('/video')} className="bg-transparent p-0 transition-colors hover:text-gray-900">
+              视频处理
+            </button>
+            <button type="button" onClick={() => void handleFeatureEntry('/multi-video')} className="bg-transparent p-0 transition-colors hover:text-gray-900">
+              多视频拼帧
+            </button>
+            <button type="button" onClick={() => void handleFeatureEntry('/image')} className="bg-transparent p-0 transition-colors hover:text-gray-900">
+              图片切图
+            </button>
           </nav>
         </div>
       </header>
@@ -40,6 +65,7 @@ function App() {
           <Route path="/image" element={<ImageUpload />} />
           <Route path="/image/segments/:imageId" element={<ImageSegments />} />
           <Route path="/image/result/:jobId" element={<ImageResult />} />
+          <Route path="/multi-video" element={<MultiVideoCompose />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

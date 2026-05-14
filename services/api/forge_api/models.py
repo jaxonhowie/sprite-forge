@@ -116,6 +116,30 @@ class CreateImageJobRequest(BaseModel):
     layout: Layout = Layout()
 
 
+class FrameSource(BaseModel):
+    video_id: str
+    ts_ms: float
+    x_offset: int = 0
+    y_offset: int = 0
+
+
+class CreateFrameAssemblyJobRequest(BaseModel):
+    frames: List[FrameSource]
+    remove_bg: bool = True
+    remove_bg_mode: RemoveBgMode = RemoveBgMode.STANDARD
+    layout: Layout = Layout()
+
+
+class FrameOffset(BaseModel):
+    x: int = 0
+    y: int = 0
+
+
+class RepackJobFramesRequest(BaseModel):
+    frame_names: List[str]
+    frame_offsets: dict[str, FrameOffset] = Field(default_factory=dict)
+
+
 class JobResponse(BaseModel):
     job_id: str
     status: JobStatus

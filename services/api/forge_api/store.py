@@ -45,6 +45,19 @@ def cleanup_tmp_dir():
             path.unlink(missing_ok=True)
 
 
+def clear_runtime_data():
+    import shutil
+
+    ensure_dirs()
+
+    for runtime_dir in (UPLOADS_DIR, IMAGES_DIR, JOBS_DIR, IMAGE_JOBS_DIR, TMP_DIR):
+        for path in runtime_dir.iterdir():
+            if path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                path.unlink(missing_ok=True)
+
+
 def generate_id() -> str:
     return str(uuid.uuid4())[:8]
 
