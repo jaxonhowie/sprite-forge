@@ -25,12 +25,20 @@ from .models import (
     JobProgress,
     JobStatus,
     RepackJobFramesRequest,
+    RepackImageJobItemsRequest,
 )
 from . import store
 from .exporters import build_engine_export, build_image_export
 from .media.extract import extract_frame_with_retry, get_video_info, save_frame_preview
 from .media.segment import detect_segments
-from .worker import normalize_job_lighting, process_job, process_frame_assembly_job, process_image_job, repack_job_frames
+from .worker import (
+    normalize_job_lighting,
+    process_job,
+    process_frame_assembly_job,
+    process_image_job,
+    repack_image_job_items,
+    repack_job_frames,
+)
 
 
 app = FastAPI(title="Sprite Forge API", version="0.1.0")
@@ -425,6 +433,25 @@ async def repack_job(job_id: str, request: RepackJobFramesRequest):
         raise HTTPException(400, str(exc)) from exc
 
     updated_job = store.get_job(job_id)
+    if not updated_job:
+        raise HTTPException(500, "任务状态更新失败")
+    return updated_job
+
+
+@app.post("/api/image-jobs/{job_id}/items:repack", response_model=ImageJobStatusResponse)
+async def repack_image_job(job_id: str, request: RepackImageJobItemsRequest):
+    job = store.get_image_job(job_id)
+    if not job:
+        raise HTTPException(404, "图片任务不存在")
+    if job.status != JobStatus.DONE:
+        raise HTTPException(400, "任务尚未完成")
+
+    try:
+        await repack_image_job_items(job_id, request.item_names)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    updated_job = store.get_image_job(job_id)
     if not updated_job:
         raise HTTPException(500, "任务状态更新失败")
     return updated_job

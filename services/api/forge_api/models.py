@@ -140,6 +140,10 @@ class RepackJobFramesRequest(BaseModel):
     frame_offsets: dict[str, FrameOffset] = Field(default_factory=dict)
 
 
+class RepackImageJobItemsRequest(BaseModel):
+    item_names: List[str]
+
+
 class JobResponse(BaseModel):
     job_id: str
     status: JobStatus

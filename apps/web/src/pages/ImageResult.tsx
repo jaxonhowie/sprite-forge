@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import useSWR from 'swr';
-import { ApiError, clearRuntimeData, deleteImage, getImageJobExportUrl, type ImageJobStatus } from '../api/client';
+import {
+  ApiError,
+  clearRuntimeData,
+  deleteImage,
+  getImageJobExportUrl,
+  repackImageJobItems,
+  type ImageJobStatus,
+} from '../api/client';
 import {
   clearImageWorkflow,
   clearAllImageWorkflowState,
@@ -36,8 +43,10 @@ export default function ImageResult() {
   const workflowState = useMemo(() => getImageWorkflowState(), []);
   const resolvedJobId = jobId ?? locationState?.jobId ?? workflowState?.jobId ?? null;
   const [exporting, setExporting] = useState(false);
+  const [previewItem, setPreviewItem] = useState<{ src: string; label: string } | null>(null);
+  const [isRepacking, setIsRepacking] = useState(false);
 
-  const { data: job, error, isLoading } = useSWR<ImageJobStatus>(
+  const { data: job, error, isLoading, mutate } = useSWR<ImageJobStatus>(
     resolvedJobId ? `/api/image-jobs/${resolvedJobId}` : null,
     fetcher,
     {
@@ -98,6 +107,35 @@ export default function ImageResult() {
     navigate('/', { state: createImageWorkflowRouteState() });
   }, [job?.image_id, navigate, workflowState?.imageMeta?.image_id]);
 
+  const getItemName = useCallback((itemUrl: string) => {
+    const url = new URL(itemUrl, window.location.origin);
+    const segments = url.pathname.split('/');
+    return segments[segments.length - 1] ?? '';
+  }, []);
+
+  const handleDeleteItem = useCallback(async (itemUrl: string) => {
+    if (!resolvedJobId || !job?.result?.item_urls || isRepacking) return;
+
+    const nextUrls = job.result.item_urls.filter((currentItemUrl) => currentItemUrl !== itemUrl);
+    if (nextUrls.length === 0) return;
+
+    const nextItemNames = nextUrls.map(getItemName).filter(Boolean);
+    if (nextItemNames.length !== nextUrls.length) return;
+
+    setIsRepacking(true);
+    try {
+      const updatedJob = await repackImageJobItems(resolvedJobId, nextItemNames);
+      await mutate(updatedJob, false);
+      if (previewItem?.src === itemUrl) {
+        setPreviewItem(null);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsRepacking(false);
+    }
+  }, [getItemName, isRepacking, job?.result?.item_urls, mutate, previewItem?.src, resolvedJobId]);
+
   if (isLoading) {
     return <div className="py-20 text-center text-gray-500">加载中...</div>;
   }
@@ -153,7 +191,7 @@ export default function ImageResult() {
           <button
             type="button"
             onClick={() => void handleExport()}
-            disabled={job.status !== 'done' || exporting}
+            disabled={job.status !== 'done' || exporting || isRepacking}
             className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-500 disabled:cursor-not-allowed disabled:bg-green-300"
           >
             {exporting ? '导出中...' : '下载 ZIP'}
@@ -175,14 +213,32 @@ export default function ImageResult() {
 
       <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
         <div className="rounded-lg border border-gray-200 bg-white p-5">
-          <h2 className="text-lg font-semibold text-gray-900">单图预览</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-gray-900">单图预览</h2>
+            {isRepacking ? <span className="text-xs text-gray-500">正在更新结果...</span> : null}
+          </div>
           <div className="mt-4 grid max-h-[70vh] gap-3 overflow-auto pr-1">
             {(job.result?.item_urls ?? []).map((itemUrl, index) => (
               <div key={itemUrl} className="rounded border border-gray-200 bg-gray-50 p-3">
-                <div className="mb-2 text-xs text-gray-500">#{index + 1}</div>
-                <div className="transparent-preview-bg flex items-center justify-center rounded border border-dashed border-gray-200 p-2">
-                  <img src={itemUrl} alt={`切图 ${index + 1}`} className="max-h-32 max-w-full object-contain" />
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="text-xs text-gray-500">#{index + 1}</div>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteItem(itemUrl)}
+                    disabled={isRepacking || (job.result?.item_urls.length ?? 0) <= 1}
+                    className="rounded border border-red-200 px-2 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:border-red-100 disabled:text-red-300"
+                  >
+                    删除
+                  </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setPreviewItem({ src: itemUrl, label: `切图 ${index + 1}` })}
+                  className="transparent-preview-bg flex w-full items-center justify-center rounded border border-dashed border-gray-200 p-2 transition-shadow hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  title="点击放大预览"
+                >
+                  <img src={itemUrl} alt={`切图 ${index + 1}`} className="max-h-32 max-w-full object-contain" />
+                </button>
               </div>
             ))}
           </div>
@@ -210,6 +266,36 @@ export default function ImageResult() {
           </div>
         </div>
       </div>
+
+      {previewItem && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6"
+          onClick={() => setPreviewItem(null)}
+        >
+          <div
+            className="max-h-full w-[min(90vw,960px)] rounded-2xl bg-white p-4 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between gap-4">
+              <div className="text-sm font-medium text-gray-700">{previewItem.label}</div>
+              <button
+                type="button"
+                onClick={() => setPreviewItem(null)}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                关闭
+              </button>
+            </div>
+            <div className="transparent-preview-bg flex h-[min(78vh,720px)] w-full items-center justify-center overflow-auto rounded-xl bg-gray-50 p-6">
+              <img
+                src={previewItem.src}
+                alt={previewItem.label}
+                className="max-h-full w-full object-contain"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

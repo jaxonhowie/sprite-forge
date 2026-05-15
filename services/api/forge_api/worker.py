@@ -97,17 +97,30 @@ def _write_job_outputs(
     return _build_job_result(job_id, version)
 
 
-def _build_image_job_result(job_id: str) -> dict:
+def _build_image_job_result(job_id: str, version: Optional[str] = None) -> dict:
+    suffix = f"?v={version}" if version else ""
     items_dir = store.IMAGE_JOBS_DIR / job_id / "items"
-    item_urls = [
-        f"/files/image_jobs/{job_id}/items/{item_path.name}"
-        for item_path in sorted(items_dir.glob("*.png"))
-    ]
+    manifest_path = store.IMAGE_JOBS_DIR / job_id / "manifest.json"
+    item_urls: list[str] = []
+    if manifest_path.exists():
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+        for item in manifest.get("items", []):
+            item_name = item.get("name")
+            if not isinstance(item_name, str):
+                continue
+            if (items_dir / item_name).exists():
+                item_urls.append(f"/files/image_jobs/{job_id}/items/{item_name}{suffix}")
+    else:
+        item_urls = [
+            f"/files/image_jobs/{job_id}/items/{item_path.name}{suffix}"
+            for item_path in sorted(items_dir.glob("*.png"))
+        ]
 
     return {
-        "spritesheet_url": f"/files/image_jobs/{job_id}/spritesheet.png",
-        "json_url": f"/files/image_jobs/{job_id}/spritesheet.json",
-        "manifest_url": f"/files/image_jobs/{job_id}/manifest.json",
+        "spritesheet_url": f"/files/image_jobs/{job_id}/spritesheet.png{suffix}",
+        "json_url": f"/files/image_jobs/{job_id}/spritesheet.json{suffix}",
+        "manifest_url": f"/files/image_jobs/{job_id}/manifest.json{suffix}",
         "item_urls": item_urls,
     }
 
@@ -120,9 +133,12 @@ def _write_image_job_outputs(
     image_size: tuple[int, int],
     cols: int,
     padding: int,
+    version: Optional[str] = None,
 ) -> dict:
     items_dir = job_dir / "items"
     items_dir.mkdir(exist_ok=True)
+    for item_path in items_dir.glob("*.png"):
+        item_path.unlink()
 
     sheet, meta = pack_grid(items, cols=cols, padding=padding)
     for index, frame_meta in enumerate(meta["frames"]):
@@ -158,7 +174,34 @@ def _write_image_job_outputs(
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
 
-    return _build_image_job_result(job_id)
+    return _build_image_job_result(job_id, version)
+
+
+def _load_image_job_boxes(job_dir: Path, item_names: list[str]) -> tuple[list[str], list[dict[str, int]]]:
+    manifest_path = job_dir / "manifest.json"
+    if not manifest_path.exists():
+        raise ValueError("切图清单不存在")
+
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    boxes_by_name: dict[str, dict[str, int]] = {}
+    for item in manifest.get("items", []):
+        item_name = item.get("name")
+        box = item.get("box")
+        if isinstance(item_name, str) and isinstance(box, dict):
+            boxes_by_name[item_name] = box
+
+    valid_item_names: list[str] = []
+    boxes: list[dict[str, int]] = []
+    for item_name in item_names:
+        box = boxes_by_name.get(item_name)
+        if box is None:
+            continue
+        valid_item_names.append(item_name)
+        boxes.append(box)
+
+    return valid_item_names, boxes
 
 
 def _apply_frame_offset(frame: np.ndarray, x_offset: int, y_offset: int) -> np.ndarray:
@@ -636,6 +679,69 @@ async def repack_job_frames(
         result["video_ids"] = job.result["video_ids"]
 
     updated_job = store.update_job(job_id, result=result, progress=1.0, stage="done")
+    if not updated_job:
+        raise ValueError("任务状态更新失败")
+
+    return result
+
+
+async def repack_image_job_items(job_id: str, item_names: list[str]) -> dict:
+    job = store.get_image_job(job_id)
+    if not job:
+        raise ValueError(f"图片任务不存在: {job_id}")
+    if job.status != JobStatus.DONE:
+        raise ValueError("任务尚未完成")
+    if not item_names:
+        raise ValueError("至少需要保留一个图块")
+
+    job_dir = store.get_image_job_dir(job_id)
+    if not job_dir:
+        raise ValueError(f"图片任务目录不存在: {job_id}")
+
+    items_dir = job_dir / "items"
+    if not items_dir.exists():
+        raise ValueError("切图结果不存在")
+
+    items: list[np.ndarray] = []
+    normalized_item_names: list[str] = []
+    for item_name in item_names:
+        if Path(item_name).name != item_name or not item_name.endswith(".png"):
+            raise ValueError("图块文件名无效")
+
+        item_path = items_dir / item_name
+        if not item_path.exists():
+            raise ValueError(f"图块不存在: {item_name}")
+
+        with Image.open(item_path) as image:
+            items.append(np.array(image.convert("RGBA")))
+        normalized_item_names.append(item_name)
+
+    valid_item_names, boxes = _load_image_job_boxes(job_dir, normalized_item_names)
+    if not valid_item_names:
+        raise ValueError("没有可保留的有效图块")
+
+    valid_item_name_set = set(valid_item_names)
+    filtered_items = [
+        item for item_name, item in zip(normalized_item_names, items)
+        if item_name in valid_item_name_set
+    ]
+    image_meta = store.get_image_meta(job.image_id)
+    if not image_meta:
+        raise ValueError(f"图片元数据不存在: {job.image_id}")
+
+    version = str(int(time.time() * 1000))
+    result = _write_image_job_outputs(
+        job_id,
+        job_dir,
+        filtered_items,
+        boxes,
+        (image_meta.width, image_meta.height),
+        job.params.layout.cols,
+        job.params.layout.padding,
+        version=version,
+    )
+
+    updated_job = store.update_image_job(job_id, result=result, progress=1.0, stage="done")
     if not updated_job:
         raise ValueError("任务状态更新失败")
 

@@ -274,6 +274,18 @@ export async function createFrameAssemblyJob(jobData: CreateFrameAssemblyJobRequ
   });
 }
 
+export async function repackImageJobItems(
+  jobId: string,
+  itemNames: string[]
+): Promise<ImageJobStatus> {
+  return request<ImageJobStatus>(`/api/image-jobs/${jobId}/items:repack`, {
+    method: 'POST',
+    body: JSON.stringify({
+      item_names: itemNames,
+    }),
+  });
+}
+
 export async function getJobStatus(jobId: string): Promise<JobStatus> {
   return request<JobStatus>(`/api/jobs/${jobId}`);
 }
