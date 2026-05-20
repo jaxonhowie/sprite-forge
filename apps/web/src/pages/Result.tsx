@@ -10,7 +10,10 @@ import {
   repackJobFrames,
   type EngineExportTarget,
   type FrameOffset,
+  type JobStatus,
 } from '../api/client';
+import { fetcher } from '../api/fetcher';
+import { videoStageLabels as stageLabels } from '../utils/stageLabels';
 import {
   clearWorkflow,
   createWorkflowRouteState,
@@ -21,40 +24,12 @@ import {
 } from '../utils/workflowState';
 import { clearAllImageWorkflowState } from '../utils/imageWorkflowState';
 
-interface JobResult {
-  id: string;
-  video_id: string;
-  status: string;
-  progress: number;
-  stage: string;
-  params: {
-    layout: {
-      cols: number;
-      padding: number;
-    };
-  };
-  error: string | null;
-  result: {
-    spritesheet_url: string;
-    json_url: string;
-    frame_urls?: string[];
-    video_ids?: string[];
-  } | null;
-}
+type JobResult = JobStatus;
 
 interface FrameSize {
   w: number;
   h: number;
 }
-
-const fetcher = async (url: string) => {
-  const response = await fetch(url);
-  if (!response.ok) {
-    const error = await response.text().catch(() => response.statusText);
-    throw new ApiError(response.status, `请求失败 (${response.status}): ${error}`);
-  }
-  return response.json() as Promise<JobResult>;
-};
 
 export default function Result() {
   const { jobId } = useParams<{ jobId: string }>();
@@ -426,14 +401,6 @@ export default function Result() {
   }
 
   if (job.status !== 'done') {
-    const stageLabels: Record<string, string> = {
-      extract: '截帧',
-      inpaint: '去水印',
-      light: '统一灯光',
-      rembg: '去背景',
-      pack: '打包精灵表',
-    };
-
     if (isLightingInProgress) {
       return (
         <div className="mx-auto max-w-4xl">

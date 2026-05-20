@@ -3,6 +3,8 @@ import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import Timeline from '../components/Timeline';
 import { deleteVideo, extractVideoFrames, getVideoMeta, type VideoMeta } from '../api/client';
 import useVideoFrame from '../hooks/useVideoFrame';
+import { formatTime } from '../utils/format';
+import { generateFrameTimestamps, uniqueSortedTimestamps, type CaptureMode } from '../utils/timestamps';
 import {
   clearWorkflow,
   createWorkflowRouteState,
@@ -15,49 +17,6 @@ import {
 interface Frame {
   ts_ms: number;
   thumb_dataurl: string;
-}
-
-type CaptureMode = 'count' | 'step';
-
-function generateFrameTimestamps(
-  durationMs: number,
-  mode: CaptureMode,
-  frameCount: number,
-  stepMsInput: number
-) {
-  if (!Number.isFinite(durationMs) || durationMs <= 0) return [];
-
-  if (mode === 'count') {
-    const count = Math.max(1, Math.min(120, Math.floor(frameCount)));
-    if (count === 1) return [0];
-    return Array.from({ length: count }, (_, i) => Math.round((durationMs * i) / (count - 1)));
-  }
-
-  const stepMs = Math.max(1, Math.floor(stepMsInput));
-  const timestamps: number[] = [];
-  for (let ts = 0; ts <= durationMs; ts += stepMs) {
-    timestamps.push(Math.round(ts));
-    if (timestamps.length >= 120) break;
-  }
-
-  const last = timestamps[timestamps.length - 1] ?? 0;
-  if (timestamps.length < 120 && durationMs - last > 100) {
-    timestamps.push(Math.round(durationMs));
-  }
-
-  return timestamps;
-}
-
-function uniqueSortedTimestamps(timestamps: number[], durationMs: number) {
-  const seen = new Set<number>();
-  return timestamps
-    .map((t) => Math.max(0, Math.min(durationMs, Math.round(t))))
-    .filter((t) => {
-      if (seen.has(t)) return false;
-      seen.add(t);
-      return true;
-    })
-    .sort((a, b) => a - b);
 }
 
 export default function Capture() {
@@ -283,14 +242,6 @@ export default function Capture() {
       });
     }
   }, [seededMeta, videoId, workflowState?.videoMeta]);
-
-  const formatTime = (ms: number) => {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    const millis = Math.floor(ms % 1000);
-    return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`;
-  };
 
   return (
     <div className="mx-auto max-w-6xl">

@@ -1,5 +1,4 @@
 import { Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
-import { clearRuntimeData } from './api/client';
 import Home from './pages/Home';
 import Upload from './pages/Upload';
 import Capture from './pages/Capture';
@@ -16,13 +15,7 @@ import { clearAllWorkflowState } from './utils/workflowState';
 function App() {
   const navigate = useNavigate();
 
-  async function handleFeatureEntry(path: string) {
-    try {
-      await clearRuntimeData();
-    } catch {
-      // Keep navigation usable even if cleanup fails.
-    }
-
+  function handleFeatureEntry(path: string) {
     clearAllWorkflowState();
     clearAllImageWorkflowState();
     navigate(path);
@@ -41,13 +34,13 @@ function App() {
           </Link>
           <nav className="flex items-center gap-6 text-sm font-medium text-gray-600">
             <Link className="transition-colors hover:text-gray-900" to="/">首页</Link>
-            <button type="button" onClick={() => void handleFeatureEntry('/video')} className="bg-transparent p-0 transition-colors hover:text-gray-900">
+            <button type="button" onClick={() => handleFeatureEntry('/video')} className="bg-transparent p-0 transition-colors hover:text-gray-900">
               视频处理
             </button>
-            <button type="button" onClick={() => void handleFeatureEntry('/multi-video')} className="bg-transparent p-0 transition-colors hover:text-gray-900">
+            <button type="button" onClick={() => handleFeatureEntry('/multi-video')} className="bg-transparent p-0 transition-colors hover:text-gray-900">
               多视频拼帧
             </button>
-            <button type="button" onClick={() => void handleFeatureEntry('/image')} className="bg-transparent p-0 transition-colors hover:text-gray-900">
+            <button type="button" onClick={() => handleFeatureEntry('/image')} className="bg-transparent p-0 transition-colors hover:text-gray-900">
               图片切图
             </button>
           </nav>

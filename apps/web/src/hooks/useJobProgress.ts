@@ -1,15 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-
-interface JobProgress {
-  stage: string;
-  progress: number;
-  message?: string;
-  status?: string;
-  error?: string;
-}
+import type { WsJobUpdate } from '../api/client';
 
 interface UseJobProgressOptions {
   jobId: string | null;
+  jobType?: 'video' | 'image';
   onComplete?: (jobId: string) => void;
   onError?: (error: string) => void;
 }
@@ -17,6 +11,7 @@ interface UseJobProgressOptions {
 interface UseJobProgressReturn {
   progress: number;
   stage: string;
+  status: string;
   message: string;
   isConnected: boolean;
   error: string | null;
@@ -24,16 +19,17 @@ interface UseJobProgressReturn {
 
 export function useJobProgress({
   jobId,
+  jobType = 'video',
   onComplete,
   onError,
 }: UseJobProgressOptions): UseJobProgressReturn {
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState('');
+  const [status, setStatus] = useState('');
   const [message, setMessage] = useState('');
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  const wsRef = useRef<WebSocket | null>(null);
+
   const onCompleteRef = useRef(onComplete);
   const onErrorRef = useRef(onError);
 
@@ -45,11 +41,11 @@ export function useJobProgress({
   useEffect(() => {
     if (!jobId) return;
 
+    const wsPath = jobType === 'image' ? `/ws/image-jobs/${jobId}` : `/ws/jobs/${jobId}`;
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${window.location.host}/ws/jobs/${jobId}`;
-    
+    const wsUrl = `${wsProtocol}//${window.location.host}${wsPath}`;
+
     const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
 
     ws.onopen = () => {
       setIsConnected(true);
@@ -58,24 +54,28 @@ export function useJobProgress({
 
     ws.onmessage = (event) => {
       try {
-        const data: JobProgress = JSON.parse(event.data);
-        
+        const data: WsJobUpdate = JSON.parse(event.data);
+
         if (data.progress !== undefined) {
           setProgress(data.progress);
         }
-        
+
         if (data.stage) {
           setStage(data.stage);
         }
-        
+
+        if (data.status) {
+          setStatus(data.status);
+        }
+
         if (data.message) {
           setMessage(data.message);
         }
-        
+
         if (data.status === 'done') {
           onCompleteRef.current?.(jobId);
         }
-        
+
         if (data.status === 'failed' || data.error) {
           const errorMsg = data.error || '处理失败';
           setError(errorMsg);
@@ -100,15 +100,9 @@ export function useJobProgress({
         ws.close();
       }
     };
-  }, [jobId]);
+  }, [jobId, jobType]);
 
-  return {
-    progress,
-    stage,
-    message,
-    isConnected,
-    error,
-  };
+  return { progress, stage, status, message, isConnected, error };
 }
 
 export default useJobProgress;

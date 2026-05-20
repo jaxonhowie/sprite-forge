@@ -7,6 +7,8 @@ import {
   uploadVideo,
   type VideoUploadResponse,
 } from '../api/client';
+import { formatTime } from '../utils/format';
+import { generateFrameTimestamps } from '../utils/timestamps';
 
 type RemoveBgMode = 'standard' | 'conservative' | 'white';
 
@@ -30,23 +32,6 @@ interface Layout {
 interface AlignmentOffset {
   x: number;
   y: number;
-}
-
-function generateFrameTimestamps(durationMs: number, frameCount: number) {
-  if (!Number.isFinite(durationMs) || durationMs <= 0) return [];
-
-  const count = Math.max(1, Math.min(60, Math.floor(frameCount)));
-  if (count === 1) return [0];
-
-  return Array.from({ length: count }, (_, index) => Math.round((durationMs * index) / (count - 1)));
-}
-
-function formatTime(ms: number) {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  const millis = Math.floor(ms % 1000);
-  return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`;
 }
 
 export default function MultiVideoCompose() {
@@ -179,7 +164,7 @@ export default function MultiVideoCompose() {
       const capturedFrames: FrameItem[] = [];
       for (let videoIndex = 0; videoIndex < videos.length; videoIndex += 1) {
         const video = videos[videoIndex];
-        const timestamps = generateFrameTimestamps(video.duration_ms, frameCount);
+        const timestamps = generateFrameTimestamps(video.duration_ms, 'count', frameCount, 1000, 60);
         const response = await extractVideoFrames(video.video_id, timestamps);
 
         for (const [frameIndex, frame] of response.frames.entries()) {

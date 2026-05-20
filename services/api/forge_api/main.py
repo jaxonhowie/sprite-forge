@@ -1,5 +1,7 @@
 import asyncio
 import shutil
+from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Literal
 from PIL import Image
 
@@ -22,7 +24,6 @@ from .models import (
     JobResponse,
     JobStatusResponse,
     ImageJobStatusResponse,
-    JobProgress,
     JobStatus,
     RepackJobFramesRequest,
     RepackImageJobItemsRequest,
@@ -41,7 +42,14 @@ from .worker import (
 )
 
 
-app = FastAPI(title="Sprite Forge API", version="0.1.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    store.ensure_dirs()
+    store.cleanup_tmp_dir()
+    yield
+
+
+app = FastAPI(title="Sprite Forge API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -52,8 +60,24 @@ app.add_middleware(
 )
 
 MAX_FILE_SIZE = 500 * 1024 * 1024
+CHUNK_SIZE = 1024 * 1024  # 1MB
 
-active_jobs: dict[str, asyncio.Task] = {}
+
+async def _stream_to_disk(dest_path: Path, upload: UploadFile) -> int:
+    """流式写入上传文件到磁盘，返回写入字节数。"""
+    size = 0
+    with open(dest_path, "wb") as f:
+        while True:
+            chunk = await upload.read(CHUNK_SIZE)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_FILE_SIZE:
+                f.close()
+                dest_path.unlink(missing_ok=True)
+                raise HTTPException(413, "文件大小不能超过 500MB")
+            f.write(chunk)
+    return size
 
 
 def get_source_suffix(content_type: str) -> str:
@@ -75,17 +99,16 @@ async def upload_video(file: UploadFile = File(...)):
     if not file.content_type or not file.content_type.startswith("video/"):
         raise HTTPException(400, "只支持视频文件")
 
-    content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(413, "文件大小不能超过 500MB")
-
     video_id = store.generate_id()
     video_dir = store.UPLOADS_DIR / video_id
     video_dir.mkdir(parents=True, exist_ok=True)
 
     source_path = video_dir / f"source{get_source_suffix(file.content_type)}"
-    with open(source_path, "wb") as f:
-        f.write(content)
+    try:
+        await _stream_to_disk(source_path, file)
+    except HTTPException:
+        shutil.rmtree(video_dir, ignore_errors=True)
+        raise
 
     try:
         info = get_video_info(source_path)
@@ -117,17 +140,16 @@ async def upload_image(file: UploadFile = File(...)):
     if file.content_type not in {"image/png", "image/jpeg", "image/webp"}:
         raise HTTPException(400, "只支持 PNG、JPG、WebP 图片")
 
-    content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(413, "文件大小不能超过 500MB")
-
     image_id = store.generate_id()
     image_dir = store.IMAGES_DIR / image_id
     image_dir.mkdir(parents=True, exist_ok=True)
 
     source_path = image_dir / f"source{get_image_suffix(file.content_type)}"
-    with open(source_path, "wb") as f:
-        f.write(content)
+    try:
+        await _stream_to_disk(source_path, file)
+    except HTTPException:
+        shutil.rmtree(image_dir, ignore_errors=True)
+        raise
 
     try:
         with Image.open(source_path) as image:
@@ -210,9 +232,6 @@ async def extract_video_frames(video_id: str, request: ExtractFramesRequest):
         raise HTTPException(404, "视频文件不存在")
 
     timestamps = request.timestamps_ms
-    if not timestamps:
-        return ExtractFramesResponse(frames=[])
-
     thumbs_dir = store.UPLOADS_DIR / video_id / "thumbs"
     thumbs_dir.mkdir(parents=True, exist_ok=True)
     for existing_path in thumbs_dir.glob("*.png"):
@@ -319,8 +338,6 @@ async def create_image_job(
     image_meta = store.get_image_meta(request.image_id)
     if not image_meta:
         raise HTTPException(404, "图片不存在")
-    if not request.boxes:
-        raise HTTPException(400, "至少需要一个切图区域")
 
     job = store.create_image_job(request.image_id, request)
     background_tasks.add_task(run_image_job_background, job.id)
@@ -333,9 +350,6 @@ async def create_frame_assembly_job(
     request: CreateFrameAssemblyJobRequest,
     background_tasks: BackgroundTasks,
 ):
-    if not request.frames:
-        raise HTTPException(400, "至少需要一个关键帧")
-
     for frame in request.frames:
         if not store.get_video_meta(frame.video_id) or not store.get_video_path(frame.video_id):
             raise HTTPException(404, f"视频不存在: {frame.video_id}")
@@ -573,17 +587,11 @@ async def job_websocket(websocket: WebSocket, job_id: str):
         print(f"WebSocket 错误: {e}")
         try:
             await websocket.close()
-        except:
+        except Exception:
             pass
 
 
 app.mount("/files", StaticFiles(directory=str(store.DATA_DIR)), name="files")
-
-
-@app.on_event("startup")
-async def startup():
-    store.ensure_dirs()
-    store.clear_runtime_data()
 
 
 if __name__ == "__main__":

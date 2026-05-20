@@ -1,7 +1,7 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import Optional, Callable, Awaitable
+from typing import Optional
 import time
 
 import numpy as np
@@ -9,7 +9,6 @@ from PIL import Image
 
 from .models import (
     JobStatus,
-    JobProgress,
     CreateJobRequest,
     CreateImageJobRequest,
     CreateFrameAssemblyJobRequest,
@@ -220,10 +219,7 @@ def _apply_frame_offset(frame: np.ndarray, x_offset: int, y_offset: int) -> np.n
     return np.array(shifted)
 
 
-async def process_job(
-    job_id: str,
-    on_progress: Optional[Callable[[JobProgress], Awaitable[None]]] = None,
-):
+async def process_job(job_id: str):
     job = store.get_job(job_id)
     if not job:
         raise ValueError(f"任务不存在: {job_id}")
@@ -252,13 +248,6 @@ async def process_job(
         for i, ts in enumerate(requested_timestamps):
             progress = (i + 0.5) / (total + 1)
 
-            if on_progress:
-                await on_progress(JobProgress(
-                    stage="extract",
-                    progress=progress,
-                    message=f"截帧 {i + 1}/{total}",
-                ))
-
             frame, actual_ts = await asyncio.to_thread(
                 extract_frame_with_retry,
                 video_path,
@@ -273,12 +262,6 @@ async def process_job(
 
         if params.watermark_box:
             store.update_job(job_id, stage="inpaint", progress=0.5)
-            if on_progress:
-                await on_progress(JobProgress(
-                    stage="inpaint",
-                    progress=0.5,
-                    message="去除水印...",
-                ))
 
             first_frame = frames[0]
             h, w = first_frame.shape[:2]
@@ -294,15 +277,6 @@ async def process_job(
 
         if params.remove_bg:
             store.update_job(job_id, stage="rembg", progress=0.0)
-            if on_progress:
-                loading_message = "加载去背景模型..."
-                if params.remove_bg_mode.value == "white":
-                    loading_message = "准备纯白背景去除..."
-                await on_progress(JobProgress(
-                    stage="rembg",
-                    progress=0.0,
-                    message=loading_message,
-                ))
 
             if params.remove_bg_mode.value != "white":
                 await asyncio.to_thread(preload_model)
@@ -310,12 +284,6 @@ async def process_job(
             processed_frames = []
             for i, frame in enumerate(frames):
                 progress = (i + 0.5) / total
-                if on_progress:
-                    await on_progress(JobProgress(
-                        stage="rembg",
-                        progress=progress,
-                        message=f"去背景 {i + 1}/{total}",
-                    ))
                 rgba_frame = await asyncio.to_thread(
                     remove_background,
                     frame,
@@ -326,12 +294,6 @@ async def process_job(
             frames = processed_frames
 
         store.update_job(job_id, stage="pack", progress=0.8)
-        if on_progress:
-            await on_progress(JobProgress(
-                stage="pack",
-                progress=0.8,
-                message="打包精灵表...",
-            ))
 
         result = _write_job_outputs(
             job_id,
@@ -350,14 +312,6 @@ async def process_job(
             result=result,
         )
 
-        if on_progress:
-            await on_progress(JobProgress(
-                stage="done",
-                progress=1.0,
-                message="处理完成",
-                status=JobStatus.DONE,
-            ))
-
     except Exception as e:
         error_msg = str(e)
         store.update_job(
@@ -366,22 +320,10 @@ async def process_job(
             error=error_msg,
         )
 
-        if on_progress:
-            await on_progress(JobProgress(
-                stage="error",
-                progress=0,
-                message=f"处理失败: {error_msg}",
-                status=JobStatus.FAILED,
-                error=error_msg,
-            ))
-
         raise
 
 
-async def process_image_job(
-    job_id: str,
-    on_progress: Optional[Callable[[JobProgress], Awaitable[None]]] = None,
-):
+async def process_image_job(job_id: str):
     job = store.get_image_job(job_id)
     if not job:
         raise ValueError(f"图片任务不存在: {job_id}")
@@ -412,12 +354,6 @@ async def process_image_job(
             items: list[np.ndarray] = []
             for index, box in enumerate(params.boxes):
                 progress = (index + 0.5) / max(total, 1) * 0.4
-                if on_progress:
-                    await on_progress(JobProgress(
-                        stage="crop",
-                        progress=progress,
-                        message=f"裁切图片 {index + 1}/{total}",
-                    ))
 
                 cropped = source.crop((box.x, box.y, box.x + box.w, box.y + box.h))
                 items.append(np.array(cropped))
@@ -429,12 +365,6 @@ async def process_image_job(
         processed_items: list[np.ndarray] = []
         for index, item in enumerate(items):
             progress = 0.4 + ((index + 0.5) / max(total, 1) * 0.4)
-            if on_progress:
-                await on_progress(JobProgress(
-                    stage="rembg",
-                    progress=progress,
-                    message=f"去背景 {index + 1}/{total}",
-                ))
 
             rgb_item = np.array(Image.fromarray(item, "RGBA").convert("RGB"))
             bgr_item = rgb_item[:, :, ::-1]
@@ -461,13 +391,6 @@ async def process_image_job(
             result=result,
         )
 
-        if on_progress:
-            await on_progress(JobProgress(
-                stage="done",
-                progress=1.0,
-                message="处理完成",
-                status=JobStatus.DONE,
-            ))
     except Exception as exc:
         error_msg = str(exc)
         store.update_image_job(
@@ -476,22 +399,12 @@ async def process_image_job(
             error=error_msg,
         )
 
-        if on_progress:
-            await on_progress(JobProgress(
-                stage="error",
-                progress=0.0,
-                message=f"处理失败: {error_msg}",
-                status=JobStatus.FAILED,
-                error=error_msg,
-            ))
-
         raise
 
 
 async def process_frame_assembly_job(
     job_id: str,
     request: CreateFrameAssemblyJobRequest,
-    on_progress: Optional[Callable[[JobProgress], Awaitable[None]]] = None,
 ):
     job = store.get_job(job_id)
     if not job:
@@ -518,12 +431,6 @@ async def process_frame_assembly_job(
                 raise ValueError(f"视频不存在: {frame_source.video_id}")
 
             progress = (i + 0.5) / max(total, 1) * 0.45
-            if on_progress:
-                await on_progress(JobProgress(
-                    stage="extract",
-                    progress=progress,
-                    message=f"截帧 {i + 1}/{total}",
-                ))
 
             frame, actual_ts = await asyncio.to_thread(
                 extract_frame_with_retry,
@@ -538,11 +445,6 @@ async def process_frame_assembly_job(
 
         if request.remove_bg:
             store.update_job(job_id, stage="rembg", progress=0.45)
-            if on_progress:
-                loading_message = "加载去背景模型..."
-                if request.remove_bg_mode.value == "white":
-                    loading_message = "准备纯白背景去除..."
-                await on_progress(JobProgress(stage="rembg", progress=0.45, message=loading_message))
 
             if request.remove_bg_mode.value != "white":
                 await asyncio.to_thread(preload_model)
@@ -550,12 +452,6 @@ async def process_frame_assembly_job(
             processed_frames = []
             for i, frame in enumerate(frames):
                 progress = 0.45 + ((i + 0.5) / max(total, 1) * 0.4)
-                if on_progress:
-                    await on_progress(JobProgress(
-                        stage="rembg",
-                        progress=progress,
-                        message=f"去背景 {i + 1}/{total}",
-                    ))
                 rgba_frame = await asyncio.to_thread(
                     remove_background,
                     frame,
@@ -572,8 +468,6 @@ async def process_frame_assembly_job(
             ]
 
         store.update_job(job_id, stage="pack", progress=0.9)
-        if on_progress:
-            await on_progress(JobProgress(stage="pack", progress=0.9, message="打包精灵表..."))
 
         result = _write_job_outputs(
             job_id,
@@ -593,25 +487,9 @@ async def process_frame_assembly_job(
             result=result,
         )
 
-        if on_progress:
-            await on_progress(JobProgress(
-                stage="done",
-                progress=1.0,
-                message="处理完成",
-                status=JobStatus.DONE,
-            ))
     except Exception as e:
         error_msg = str(e)
         store.update_job(job_id, status=JobStatus.FAILED, error=error_msg)
-
-        if on_progress:
-            await on_progress(JobProgress(
-                stage="error",
-                progress=0.0,
-                message=f"处理失败: {error_msg}",
-                status=JobStatus.FAILED,
-                error=error_msg,
-            ))
 
         raise
 
@@ -748,10 +626,7 @@ async def repack_image_job_items(job_id: str, item_names: list[str]) -> dict:
     return result
 
 
-async def normalize_job_lighting(
-    job_id: str,
-    on_progress: Optional[Callable[[JobProgress], Awaitable[None]]] = None,
-):
+async def normalize_job_lighting(job_id: str):
     job = store.get_job(job_id)
     if not job:
         raise ValueError(f"任务不存在: {job_id}")
@@ -780,19 +655,11 @@ async def normalize_job_lighting(
 
     try:
         store.update_job(job_id, status=JobStatus.RUNNING, stage="light", progress=0.0, result=current_result)
-        if on_progress:
-            await on_progress(JobProgress(stage="light", progress=0.0, message="统一灯光..."))
 
         target_mean, target_std = await asyncio.to_thread(estimate_target_lighting, frames)
         normalized_frames = []
         for i, frame in enumerate(frames):
             progress = (i + 0.5) / total
-            if on_progress:
-                await on_progress(JobProgress(
-                    stage="light",
-                    progress=progress,
-                    message=f"统一灯光 {i + 1}/{total}",
-                ))
             normalized_frame = await asyncio.to_thread(
                 normalize_frame_lighting,
                 frame,
@@ -823,8 +690,6 @@ async def normalize_job_lighting(
             result=result,
         )
 
-        if on_progress:
-            await on_progress(JobProgress(stage="done", progress=1.0, message="统一灯光完成", status=JobStatus.DONE))
     except Exception:
         store.update_job(
             job_id,

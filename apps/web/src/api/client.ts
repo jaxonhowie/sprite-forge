@@ -140,6 +140,14 @@ export interface ImageJobStatus {
 
 export type EngineExportTarget = 'generic' | 'cocos' | 'unity' | 'godot' | 'frames';
 
+export interface WsJobUpdate {
+  stage: string;
+  progress: number;
+  status: string;
+  message?: string;
+  error?: string;
+}
+
 const BASE_URL = '';
 
 export class ApiError extends Error {
@@ -174,10 +182,7 @@ async function request<T>(
   return response.json();
 }
 
-export async function uploadVideo(
-  file: File,
-  onProgress?: (progress: number) => void
-): Promise<VideoUploadResponse> {
+function uploadFile<T>(endpoint: string, file: File, onProgress?: (progress: number) => void): Promise<T> {
   const formData = new FormData();
   formData.append('file', file);
 
@@ -199,39 +204,17 @@ export async function uploadVideo(
     };
 
     xhr.onerror = () => reject(new Error('网络错误'));
-    xhr.open('POST', '/api/videos');
+    xhr.open('POST', endpoint);
     xhr.send(formData);
   });
 }
 
-export async function uploadImage(
-  file: File,
-  onProgress?: (progress: number) => void
-): Promise<ImageUploadResponse> {
-  const formData = new FormData();
-  formData.append('file', file);
+export function uploadVideo(file: File, onProgress?: (progress: number) => void): Promise<VideoUploadResponse> {
+  return uploadFile<VideoUploadResponse>('/api/videos', file, onProgress);
+}
 
-  const xhr = new XMLHttpRequest();
-
-  return new Promise((resolve, reject) => {
-    xhr.upload.addEventListener('progress', (e) => {
-      if (e.lengthComputable && onProgress) {
-        onProgress(Math.round((e.loaded / e.total) * 100));
-      }
-    });
-
-    xhr.onload = () => {
-      if (xhr.status === 200) {
-        resolve(JSON.parse(xhr.responseText));
-      } else {
-        reject(new Error(`上传失败: ${xhr.status}`));
-      }
-    };
-
-    xhr.onerror = () => reject(new Error('网络错误'));
-    xhr.open('POST', '/api/images');
-    xhr.send(formData);
-  });
+export function uploadImage(file: File, onProgress?: (progress: number) => void): Promise<ImageUploadResponse> {
+  return uploadFile<ImageUploadResponse>('/api/images', file, onProgress);
 }
 
 export async function getVideoMeta(videoId: string): Promise<VideoMeta> {

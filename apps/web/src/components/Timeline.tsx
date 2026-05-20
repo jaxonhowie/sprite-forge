@@ -1,4 +1,5 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
+import { formatTimeShort } from '../utils/format';
 
 interface TimelineProps {
   currentTime: number;
@@ -85,18 +86,12 @@ export default function Timeline({ currentTime, duration, onSeek, markers = [] }
       timeMs,
     }));
 
-  const formatTime = (ms: number) => {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
 
   return (
     <div className="relative select-none py-4">
       <div className="mb-2 flex justify-between text-sm text-gray-400">
-        <span>{formatTime(currentTime)}</span>
-        <span>{formatTime(duration)}</span>
+        <span>{formatTimeShort(currentTime)}</span>
+        <span>{formatTimeShort(duration)}</span>
       </div>
 
       <div
@@ -119,8 +114,8 @@ export default function Timeline({ currentTime, duration, onSeek, markers = [] }
           <button
             key={marker.id}
             type="button"
-            title={formatTime(marker.timeMs)}
-            aria-label={`跳转到 ${formatTime(marker.timeMs)}`}
+            title={formatTimeShort(marker.timeMs)}
+            aria-label={`跳转到 ${formatTimeShort(marker.timeMs)}`}
             onClick={(e) => {
               e.stopPropagation();
               onSeek(marker.timeMs);

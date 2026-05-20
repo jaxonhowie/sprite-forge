@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from enum import Enum
 from datetime import datetime
@@ -9,14 +9,6 @@ class JobStatus(str, Enum):
     RUNNING = "running"
     DONE = "done"
     FAILED = "failed"
-
-
-class JobStage(str, Enum):
-    EXTRACT = "extract"
-    INPAINT = "inpaint"
-    LIGHT = "light"
-    REMBG = "rembg"
-    PACK = "pack"
 
 
 class RemoveBgMode(str, Enum):
@@ -38,12 +30,19 @@ class Layout(BaseModel):
 
 
 class CreateJobRequest(BaseModel):
-    video_id: str
-    timestamps_ms: List[float]
+    video_id: str = Field(..., min_length=1, max_length=64)
+    timestamps_ms: List[float] = Field(..., min_length=1)
     remove_bg: bool = True
     remove_bg_mode: RemoveBgMode = RemoveBgMode.STANDARD
     watermark_box: Optional[WatermarkBox] = None
     layout: Layout = Layout()
+
+    @field_validator("timestamps_ms")
+    @classmethod
+    def validate_timestamps(cls, v: List[float]) -> List[float]:
+        if any(t < 0 for t in v):
+            raise ValueError("时间戳不能为负数")
+        return v
 
 
 class VideoMeta(BaseModel):
@@ -66,7 +65,14 @@ class VideoUploadResponse(BaseModel):
 
 
 class ExtractFramesRequest(BaseModel):
-    timestamps_ms: List[float]
+    timestamps_ms: List[float] = Field(..., min_length=1)
+
+    @field_validator("timestamps_ms")
+    @classmethod
+    def validate_timestamps(cls, v: List[float]) -> List[float]:
+        if any(t < 0 for t in v):
+            raise ValueError("时间戳不能为负数")
+        return v
 
 
 class ExtractedFramePreview(BaseModel):
@@ -110,21 +116,21 @@ class DetectSegmentsResponse(BaseModel):
 
 
 class CreateImageJobRequest(BaseModel):
-    image_id: str
-    boxes: List[SegmentBox]
+    image_id: str = Field(..., min_length=1, max_length=64)
+    boxes: List[SegmentBox] = Field(..., min_length=1)
     remove_bg: bool = True
     layout: Layout = Layout()
 
 
 class FrameSource(BaseModel):
-    video_id: str
-    ts_ms: float
+    video_id: str = Field(..., min_length=1, max_length=64)
+    ts_ms: float = Field(..., ge=0)
     x_offset: int = 0
     y_offset: int = 0
 
 
 class CreateFrameAssemblyJobRequest(BaseModel):
-    frames: List[FrameSource]
+    frames: List[FrameSource] = Field(..., min_length=1)
     remove_bg: bool = True
     remove_bg_mode: RemoveBgMode = RemoveBgMode.STANDARD
     layout: Layout = Layout()
@@ -136,35 +142,17 @@ class FrameOffset(BaseModel):
 
 
 class RepackJobFramesRequest(BaseModel):
-    frame_names: List[str]
+    frame_names: List[str] = Field(..., min_length=1)
     frame_offsets: dict[str, FrameOffset] = Field(default_factory=dict)
 
 
 class RepackImageJobItemsRequest(BaseModel):
-    item_names: List[str]
+    item_names: List[str] = Field(..., min_length=1)
 
 
 class JobResponse(BaseModel):
     job_id: str
     status: JobStatus
-
-
-class FrameInfo(BaseModel):
-    index: int
-    ts_ms: int
-    x: int
-    y: int
-    w: int
-    h: int
-
-
-class SpritesheetMeta(BaseModel):
-    image: str
-    frame_size: dict
-    padding: int
-    cols: int
-    rows: int
-    frames: List[FrameInfo]
 
 
 class JobStatusResponse(BaseModel):

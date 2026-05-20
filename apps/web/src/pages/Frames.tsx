@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import { deleteVideo, getVideoMeta } from '../api/client';
 import useVideoFrame from '../hooks/useVideoFrame';
+import { formatTime } from '../utils/format';
 import {
   clearWorkflow,
   createWorkflowRouteState,
@@ -234,13 +235,6 @@ export default function Frames() {
     navigate('/');
   }, [seededMeta, videoId, navigate]);
 
-  const formatTime = (ms: number) => {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    const millis = Math.floor(ms % 1000);
-    return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`;
-  };
 
   return (
     <div className="mx-auto max-w-6xl">

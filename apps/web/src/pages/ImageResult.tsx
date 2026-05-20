@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import useSWR from 'swr';
 import {
-  ApiError,
   clearRuntimeData,
   deleteImage,
   getImageJobExportUrl,
   repackImageJobItems,
   type ImageJobStatus,
 } from '../api/client';
+import { fetcher } from '../api/fetcher';
+import { imageStageLabels as stageLabels } from '../utils/stageLabels';
 import {
   clearImageWorkflow,
   clearAllImageWorkflowState,
@@ -18,22 +19,6 @@ import {
   type ImageWorkflowRouteState,
 } from '../utils/imageWorkflowState';
 import { clearAllWorkflowState } from '../utils/workflowState';
-
-const fetcher = async (url: string) => {
-  const response = await fetch(url);
-  if (!response.ok) {
-    const error = await response.text().catch(() => response.statusText);
-    throw new ApiError(response.status, `请求失败 (${response.status}): ${error}`);
-  }
-  return response.json() as Promise<ImageJobStatus>;
-};
-
-const stageLabels: Record<string, string> = {
-  crop: '裁切图块',
-  rembg: '去背景',
-  pack: '生成精灵表',
-  done: '处理完成',
-};
 
 export default function ImageResult() {
   const { jobId } = useParams<{ jobId: string }>();

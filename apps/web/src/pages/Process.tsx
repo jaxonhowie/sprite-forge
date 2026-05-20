@@ -3,6 +3,7 @@ import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import BoxSelector from '../components/BoxSelector';
 import { createJob, deleteVideo, getVideoMeta } from '../api/client';
 import useVideoFrame from '../hooks/useVideoFrame';
+import { videoStageLabels as stageLabels } from '../utils/stageLabels';
 import {
   clearWorkflow,
   createWorkflowRouteState,
@@ -256,13 +257,6 @@ export default function Process() {
     }
     navigate('/');
   }, [isProcessing, navigate, resolvedVideoId]);
-
-  const stageLabels: Record<string, string> = {
-    extract: '截帧',
-    inpaint: '去水印',
-    rembg: '去背景',
-    pack: '打包精灵表',
-  };
 
   const firstThumbnail = timestamps.length > 0 ? thumbnails.get(timestamps[0]) : undefined;
 
