@@ -2,9 +2,10 @@
 
 [中文说明](./README.md)
 
-Sprite Forge is a small full-stack asset processing tool with two independent workflows:
+Sprite Forge is a small full-stack asset processing tool with three independent workflows:
 
 - `Video Processing`: upload a video, extract frames automatically, remove backgrounds, and export a sprite sheet.
+- `Multi-Video Compose`: extract keyframes from multiple videos and combine them into a single sprite sheet.
 - `Image Slicing`: upload a white-background asset sheet, detect isolated items automatically, remove each background, and export the results.
 
 > For personal interest use only. Commercial use is not allowed.
@@ -95,7 +96,18 @@ Typical flow:
 4. Configure processing settings
 5. Preview and export the result
 
-### 2. Image Slicing
+### 2. Multi-Video Compose
+
+Best for combining keyframes from multiple animation clips into one sprite set.
+
+Main features:
+
+- Add multiple video sources with per-video frame counts
+- Preview keyframes from each video
+- Optional background removal and lighting normalization
+- Combined sprite sheet export
+
+### 3. Image Slicing
 
 Best for white-background UI sheets or asset boards where each item is visually separated.
 
