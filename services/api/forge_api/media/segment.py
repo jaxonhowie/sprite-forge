@@ -4,10 +4,10 @@ import cv2
 import numpy as np
 
 
-WHITE_THRESHOLD = 230
 MIN_SEGMENT_AREA = 400
 MERGE_GAP = 20
 EDGE_PADDING = 4
+BG_MARGIN = 20  # 前景阈值 = 检测到的背景亮度 - 此值
 
 
 def _merge_boxes(boxes: list[tuple[int, int, int, int]], gap: int) -> list[tuple[int, int, int, int]]:
@@ -32,7 +32,6 @@ def _merge_boxes(boxes: list[tuple[int, int, int, int]], gap: int) -> list[tuple
                     continue
                 x2, y2, w2, h2 = merged[j]
 
-                # 检查两个包围盒在 x 和 y 方向上的间距
                 overlap_x = (bx <= x2 + w2 + gap) and (x2 <= bx + bw + gap)
                 overlap_y = (by <= y2 + h2 + gap) and (y2 <= by + bh + gap)
 
@@ -51,6 +50,20 @@ def _merge_boxes(boxes: list[tuple[int, int, int, int]], gap: int) -> list[tuple
     return merged
 
 
+def _detect_background_brightness(gray: np.ndarray) -> int:
+    """从图片四角采样，返回背景亮度中位数。"""
+    h, w = gray.shape[:2]
+    strip = max(1, min(h, w) // 20)
+
+    samples = np.concatenate([
+        gray[:strip, :].ravel(),
+        gray[-strip:, :].ravel(),
+        gray[:, :strip].ravel(),
+        gray[:, -strip:].ravel(),
+    ])
+    return int(np.median(samples))
+
+
 def detect_segments(image_path: Path) -> list[dict[str, int]]:
     image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
     if image is None:
@@ -59,10 +72,14 @@ def detect_segments(image_path: Path) -> list[dict[str, int]]:
     h_img, w_img = image.shape[:2]
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    _, background = cv2.threshold(gray, WHITE_THRESHOLD, 255, cv2.THRESH_BINARY)
+
+    bg_brightness = _detect_background_brightness(gray)
+    threshold = max(128, bg_brightness - BG_MARGIN)
+
+    _, background = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
     foreground = cv2.bitwise_not(background)
 
-    # 先闭运算填充精灵内部白色缝隙，再开运算去除噪点
+    # 先闭运算填充精灵内部缝隙，再开运算去除噪点
     close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
     foreground = cv2.morphologyEx(foreground, cv2.MORPH_CLOSE, close_kernel, iterations=3)
 
