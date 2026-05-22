@@ -118,7 +118,7 @@ npm --prefix apps/web run build
 - 按图块逐个去背景
 - 横向网格预览，支持拖拽调整顺序和单个删除
 - 逐帧播放预览动画效果
-- 多目标导出：逐帧 PNG ZIP、精灵表 + JSON、Godot 4、Unity、Cocos Creator
+- 多目标导出：逐帧 PNG ZIP、GIF 动画、精灵表 + JSON、Godot 4、Unity、Cocos Creator
 
 典型流程：
 

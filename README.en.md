@@ -118,7 +118,7 @@ Main features:
 - Background removal item by item
 - Horizontal grid preview with drag-and-drop reordering and per-item deletion
 - Frame-by-frame playback preview
-- Multi-target export: per-item PNG ZIP, sprite sheet + JSON, Godot 4, Unity, Cocos Creator
+- Multi-target export: per-item PNG ZIP, animated GIF, sprite sheet + JSON, Godot 4, Unity, Cocos Creator
 
 Typical flow:
 
