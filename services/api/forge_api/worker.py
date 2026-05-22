@@ -129,7 +129,7 @@ def _write_image_job_outputs(
     job_dir: Path,
     items: list[np.ndarray],
     boxes: list[dict[str, int]],
-    image_size: tuple[int, int],
+    image_sources: list[dict],
     cols: int,
     padding: int,
     version: Optional[str] = None,
@@ -156,10 +156,7 @@ def _write_image_job_outputs(
         json.dump(meta, f, ensure_ascii=False, indent=2)
 
     manifest = {
-        "source_image": {
-            "w": image_size[0],
-            "h": image_size[1],
-        },
+        "source_images": image_sources,
         "items": [
             {
                 "index": index,
@@ -328,14 +325,6 @@ async def process_image_job(job_id: str):
     if not job:
         raise ValueError(f"图片任务不存在: {job_id}")
 
-    image_path = store.get_image_path(job.image_id)
-    if not image_path:
-        raise ValueError(f"图片不存在: {job.image_id}")
-
-    image_meta = store.get_image_meta(job.image_id)
-    if not image_meta:
-        raise ValueError(f"图片元数据不存在: {job.image_id}")
-
     job_dir = store.get_image_job_dir(job_id)
     if not job_dir:
         raise ValueError(f"图片任务目录不存在: {job_id}")
@@ -343,32 +332,50 @@ async def process_image_job(job_id: str):
     store.update_image_job(job_id, status=JobStatus.RUNNING, stage="crop", progress=0.0)
 
     params: CreateImageJobRequest = job.params
-    total = len(params.boxes)
-    if total == 0:
+    total_boxes = sum(len(entry.boxes) for entry in params.images)
+    if total_boxes == 0:
         raise ValueError("没有可处理的切图区域")
 
     try:
-        with Image.open(image_path) as image:
-            source = image.convert("RGBA")
+        items: list[np.ndarray] = []
+        all_boxes: list[dict] = []
+        image_sources: list[dict] = []
+        cropped_count = 0
 
-            items: list[np.ndarray] = []
-            for index, box in enumerate(params.boxes):
-                progress = (index + 0.5) / max(total, 1) * 0.4
+        for entry in params.images:
+            image_path = store.get_image_path(entry.image_id)
+            if not image_path:
+                raise ValueError(f"图片不存在: {entry.image_id}")
 
-                cropped = source.crop((box.x, box.y, box.x + box.w, box.y + box.h))
-                items.append(np.array(cropped))
-                store.update_image_job(job_id, progress=progress, stage="crop")
+            image_meta = store.get_image_meta(entry.image_id)
+            if not image_meta:
+                raise ValueError(f"图片元数据不存在: {entry.image_id}")
+
+            image_sources.append({
+                "image_id": entry.image_id,
+                "w": image_meta.width,
+                "h": image_meta.height,
+            })
+
+            with Image.open(image_path) as image:
+                source = image.convert("RGBA")
+                for box in entry.boxes:
+                    cropped = source.crop((box.x, box.y, box.x + box.w, box.y + box.h))
+                    items.append(np.array(cropped))
+                    all_boxes.append(box.model_dump())
+                    cropped_count += 1
+                    progress = cropped_count / max(total_boxes, 1) * 0.4
+                    store.update_image_job(job_id, progress=progress, stage="crop")
 
         store.update_image_job(job_id, stage="rembg", progress=0.4)
-        await asyncio.to_thread(preload_model)
 
         processed_items: list[np.ndarray] = []
         for index, item in enumerate(items):
-            progress = 0.4 + ((index + 0.5) / max(total, 1) * 0.4)
+            progress = 0.4 + ((index + 0.5) / max(total_boxes, 1) * 0.4)
 
             rgb_item = np.array(Image.fromarray(item, "RGBA").convert("RGB"))
             bgr_item = rgb_item[:, :, ::-1]
-            rgba_item = await asyncio.to_thread(remove_background, bgr_item)
+            rgba_item = await asyncio.to_thread(remove_background, bgr_item, "white")
             processed_items.append(rgba_item)
             store.update_image_job(job_id, progress=progress, stage="rembg")
 
@@ -377,8 +384,8 @@ async def process_image_job(job_id: str):
             job_id,
             job_dir,
             processed_items,
-            [box.model_dump() for box in params.boxes],
-            (image_meta.width, image_meta.height),
+            all_boxes,
+            image_sources,
             params.layout.cols,
             params.layout.padding,
         )
@@ -603,9 +610,11 @@ async def repack_image_job_items(job_id: str, item_names: list[str]) -> dict:
         item for item_name, item in zip(normalized_item_names, items)
         if item_name in valid_item_name_set
     ]
-    image_meta = store.get_image_meta(job.image_id)
-    if not image_meta:
-        raise ValueError(f"图片元数据不存在: {job.image_id}")
+
+    manifest_path = job_dir / "manifest.json"
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        manifest = json.load(f)
+    image_sources = manifest.get("source_images", [])
 
     version = str(int(time.time() * 1000))
     result = _write_image_job_outputs(
@@ -613,7 +622,7 @@ async def repack_image_job_items(job_id: str, item_names: list[str]) -> dict:
         job_dir,
         filtered_items,
         boxes,
-        (image_meta.width, image_meta.height),
+        image_sources,
         job.params.layout.cols,
         job.params.layout.padding,
         version=version,

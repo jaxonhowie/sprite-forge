@@ -56,7 +56,7 @@ function App() {
           <Route path="/process/:videoId" element={<Process />} />
           <Route path="/result/:jobId" element={<Result />} />
           <Route path="/image" element={<ImageUpload />} />
-          <Route path="/image/segments/:imageId" element={<ImageSegments />} />
+          <Route path="/image/segments" element={<ImageSegments />} />
           <Route path="/image/result/:jobId" element={<ImageResult />} />
           <Route path="/multi-video" element={<MultiVideoCompose />} />
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -113,19 +113,20 @@ Best for white-background UI sheets or asset boards where each item is visually 
 
 Main features:
 
-- Upload `PNG` / `JPG` / `WebP`
-- Detect item boundaries automatically
-- Remove the background item by item
-- Preview each transparent PNG
-- Generate a sprite sheet and metadata
-- Export a ZIP containing individual images, the sprite sheet, and `manifest.json`
+- Multi-image upload: detect items per image independently, merge all into one sprite sheet
+- Adaptive threshold detection, compatible with light-colored assets and internal white gaps
+- Background removal item by item
+- Horizontal grid preview with drag-and-drop reordering and per-item deletion
+- Frame-by-frame playback preview
+- Multi-target export: per-item PNG ZIP, sprite sheet + JSON, Godot 4, Unity, Cocos Creator
 
 Typical flow:
 
-1. Upload an asset image
-2. Confirm the detected item regions
+1. Upload one or more asset images
+2. Confirm detected item regions for each image
 3. Set sprite sheet columns and padding
-4. Process and download the result
+4. Process and preview the result
+5. Drag to reorder items, choose an export format and download
 
 ## Directory Overview
 

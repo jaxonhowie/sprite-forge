@@ -1,49 +1,88 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { uploadImage } from '../api/client';
+import { uploadImage, type ImageUploadResponse } from '../api/client';
 import {
   createImageWorkflowRouteState,
   createInitialImageWorkflowState,
   setImageWorkflowState,
 } from '../utils/imageWorkflowState';
 
+interface UploadedImage {
+  meta: ImageUploadResponse;
+  file: File;
+  previewUrl: string;
+}
+
 export default function ImageUpload() {
   const navigate = useNavigate();
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
+  const [images, setImages] = useState<UploadedImage[]>([]);
 
-  const handleUpload = useCallback(async (file: File) => {
-    if (!file.type.match(/^image\/(png|jpeg|webp)$/)) {
-      setError('只支持 PNG、JPG、WebP 格式');
-      return;
+  const uploadFiles = useCallback(async (files: File[]) => {
+    const validFiles: File[] = [];
+    for (const file of files) {
+      if (!file.type.match(/^image\/(png|jpeg|webp)$/)) {
+        setError(`"${file.name}" 格式不支持，只支持 PNG、JPG、WebP`);
+        return;
+      }
+      if (file.size > 500 * 1024 * 1024) {
+        setError(`"${file.name}" 大小不能超过 500MB`);
+        return;
+      }
+      validFiles.push(file);
     }
 
-    if (file.size > 500 * 1024 * 1024) {
-      setError('文件大小不能超过 500MB');
-      return;
-    }
+    if (validFiles.length === 0) return;
 
     setIsUploading(true);
     setError(null);
+    setUploadProgress({ current: 0, total: validFiles.length });
 
-    try {
-      const response = await uploadImage(file, setProgress);
-      setImageWorkflowState({
-        ...createInitialImageWorkflowState(),
-        currentStep: 'segments',
-        imageMeta: response,
-      });
-      navigate(`/image/segments/${response.image_id}`, {
-        state: createImageWorkflowRouteState({ imageMeta: response }),
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '上传失败');
-    } finally {
-      setIsUploading(false);
+    const newImages: UploadedImage[] = [];
+    for (let i = 0; i < validFiles.length; i++) {
+      setUploadProgress({ current: i, total: validFiles.length });
+      try {
+        const response = await uploadImage(validFiles[i]);
+        newImages.push({
+          meta: response,
+          file: validFiles[i],
+          previewUrl: URL.createObjectURL(validFiles[i]),
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : `"${validFiles[i].name}" 上传失败`);
+        setIsUploading(false);
+        return;
+      }
     }
-  }, [navigate]);
+
+    setImages((prev) => [...prev, ...newImages]);
+    setIsUploading(false);
+  }, []);
+
+  const handleRemoveImage = useCallback((imageId: string) => {
+    setImages((prev) => {
+      const target = prev.find((img) => img.meta.image_id === imageId);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((img) => img.meta.image_id !== imageId);
+    });
+  }, []);
+
+  const handleNext = useCallback(() => {
+    if (images.length === 0) return;
+
+    const imageMetas = images.map((img) => img.meta);
+    setImageWorkflowState({
+      ...createInitialImageWorkflowState(),
+      currentStep: 'segments',
+      imageMetas,
+    });
+    navigate('/image/segments', {
+      state: createImageWorkflowRouteState({ imageMetas }),
+    });
+  }, [images, navigate]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -59,18 +98,19 @@ export default function ImageUpload() {
     e.preventDefault();
     setIsDragging(false);
 
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      void handleUpload(file);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      void uploadFiles(files);
     }
-  }, [handleUpload]);
+  }, [uploadFiles]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      void handleUpload(file);
+    const files = Array.from(e.target.files ?? []);
+    if (files.length > 0) {
+      void uploadFiles(files);
     }
-  }, [handleUpload]);
+    e.target.value = '';
+  }, [uploadFiles]);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col items-center">
@@ -81,11 +121,15 @@ export default function ImageUpload() {
 
       {isUploading ? (
         <div className="w-full rounded-lg border border-gray-200 bg-white p-6">
-          <div className="mb-4 text-center text-lg font-medium text-gray-700">上传中...</div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
-            <div className="h-full rounded-full bg-green-600 transition-all" style={{ width: `${progress}%` }} />
+          <div className="mb-4 text-center text-lg font-medium text-gray-700">
+            上传中... ({uploadProgress.current}/{uploadProgress.total})
           </div>
-          <div className="mt-2 text-center text-sm text-gray-500">{progress}%</div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+            <div
+              className="h-full rounded-full bg-green-600 transition-all"
+              style={{ width: `${uploadProgress.total > 0 ? (uploadProgress.current / uploadProgress.total) * 100 : 0}%` }}
+            />
+          </div>
         </div>
       ) : (
         <div
@@ -103,17 +147,17 @@ export default function ImageUpload() {
             id="image-file-input"
             type="file"
             accept="image/png,image/jpeg,image/webp"
+            multiple
             className="hidden"
             onChange={handleFileSelect}
-            disabled={isUploading}
           />
 
           <svg className="mb-4 h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M3 7.5l4.5 4.5 3-3 4.5 4.5 3-3L21 13.5M3.75 6h16.5A.75.75 0 0 1 21 6.75v10.5a.75.75 0 0 1-.75.75H3.75a.75.75 0 0 1-.75-.75V6.75A.75.75 0 0 1 3.75 6Z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M3 7.5l4.5 4.5 3-3 4.5 4.5 3-3L21 13.5M3.75 6h16.5a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75H3.75a.75.75 0 0 1-.75-.75V6.75A.75.75 0 0 1 3.75 6Z" />
           </svg>
 
           <div className="mb-2 text-base font-medium text-gray-700">拖放素材图到此处</div>
-          <div className="text-sm text-gray-400">或点击选择文件</div>
+          <div className="text-sm text-gray-400">或点击选择文件（支持多选）</div>
           <div className="mt-3 text-xs text-gray-400">支持 PNG、JPG、WebP，适合白底分离素材</div>
         </div>
       )}
@@ -121,6 +165,50 @@ export default function ImageUpload() {
       {error && (
         <div className="mt-6 w-full rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
           {error}
+        </div>
+      )}
+
+      {images.length > 0 && (
+        <div className="mt-6 w-full">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-medium text-gray-700">已上传 {images.length} 张图片</h2>
+            <button
+              type="button"
+              onClick={() => document.getElementById('image-file-input')?.click()}
+              className="text-sm text-blue-600 hover:text-blue-500"
+            >
+              继续添加
+            </button>
+          </div>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-3">
+            {images.map((img) => (
+              <div key={img.meta.image_id} className="group relative rounded border border-gray-200 bg-gray-50 p-2">
+                <div className="transparent-preview-bg flex aspect-square items-center justify-center overflow-hidden rounded">
+                  <img src={img.previewUrl} alt={img.file.name} className="max-h-full max-w-full object-contain" />
+                </div>
+                <div className="mt-1 truncate text-xs text-gray-500" title={img.file.name}>
+                  {img.file.name}
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleRemoveImage(img.meta.image_id); }}
+                  className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs text-red-500 shadow-sm opacity-0 transition-opacity group-hover:opacity-100"
+                >
+                  &times;
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 flex justify-center">
+            <button
+              type="button"
+              onClick={handleNext}
+              className="rounded-lg bg-gray-900 px-8 py-3 text-sm font-bold text-white transition-colors hover:bg-gray-800"
+            >
+              下一步 — 确认切图区域
+            </button>
+          </div>
         </div>
       )}
     </div>

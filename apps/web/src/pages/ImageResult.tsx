@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import useSWR from 'swr';
 import {
@@ -6,6 +6,7 @@ import {
   deleteImage,
   getImageJobExportUrl,
   repackImageJobItems,
+  type ImageExportTarget,
   type ImageJobStatus,
 } from '../api/client';
 import { fetcher } from '../api/fetcher';
@@ -28,8 +29,27 @@ export default function ImageResult() {
   const workflowState = useMemo(() => getImageWorkflowState(), []);
   const resolvedJobId = jobId ?? locationState?.jobId ?? workflowState?.jobId ?? null;
   const [exporting, setExporting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
   const [previewItem, setPreviewItem] = useState<{ src: string; label: string } | null>(null);
   const [isRepacking, setIsRepacking] = useState(false);
+  const [arrangedItemUrls, setArrangedItemUrls] = useState<string[]>([]);
+  const [itemsDirty, setItemsDirty] = useState(false);
+  const dragIndexRef = useRef<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [isPlayingItems, setIsPlayingItems] = useState(false);
+  const [playingItemIndex, setPlayingItemIndex] = useState(0);
+
+  useEffect(() => {
+    if (!exportOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setExportOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [exportOpen]);
 
   const { data: job, error, isLoading, mutate } = useSWR<ImageJobStatus>(
     resolvedJobId ? `/api/image-jobs/${resolvedJobId}` : null,
@@ -47,19 +67,60 @@ export default function ImageResult() {
     });
   }, [job]);
 
-  const handleExport = useCallback(async () => {
+  useEffect(() => {
+    setArrangedItemUrls(job?.result?.item_urls ?? []);
+    setItemsDirty(false);
+    setIsPlayingItems(false);
+    setPlayingItemIndex(0);
+  }, [job?.result?.item_urls]);
+
+  useEffect(() => {
+    if (!isPlayingItems || arrangedItemUrls.length === 0) return;
+    const timer = setInterval(() => {
+      setPlayingItemIndex((current) => (current + 1) % arrangedItemUrls.length);
+    }, 160);
+    return () => clearInterval(timer);
+  }, [isPlayingItems, arrangedItemUrls.length]);
+
+  const getItemName = useCallback((itemUrl: string) => {
+    const url = new URL(itemUrl, window.location.origin);
+    const segments = url.pathname.split('/');
+    return segments[segments.length - 1] ?? '';
+  }, []);
+
+  const syncArrangedItems = useCallback(async () => {
+    if (!resolvedJobId || !itemsDirty) return;
+    const itemNames = arrangedItemUrls.map(getItemName).filter(Boolean);
+    if (itemNames.length !== arrangedItemUrls.length) return;
+    const updatedJob = await repackImageJobItems(resolvedJobId, itemNames);
+    await mutate(updatedJob, false);
+    setItemsDirty(false);
+  }, [arrangedItemUrls, getItemName, itemsDirty, mutate, resolvedJobId]);
+
+  const handleExport = useCallback(async (target: ImageExportTarget | 'png') => {
+    setExportOpen(false);
     if (!resolvedJobId) return;
+
+    try {
+      await syncArrangedItems();
+    } catch (err) {
+      console.error('同步顺序失败:', err);
+      return;
+    }
 
     setExporting(true);
     try {
-      const response = await fetch(getImageJobExportUrl(resolvedJobId));
+      const exportTarget = target === 'png' ? 'items' : target;
+      const url = getImageJobExportUrl(resolvedJobId, exportTarget as ImageExportTarget);
+      const response = await fetch(url);
       if (!response.ok) throw new Error('导出失败');
 
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = blobUrl;
-      anchor.download = `image_segments_${resolvedJobId}.zip`;
+      const ext = exportTarget === 'gif' ? 'gif' : 'zip';
+      anchor.download = `image_segments_${resolvedJobId}.${ext}`;
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
@@ -69,16 +130,16 @@ export default function ImageResult() {
     } finally {
       setExporting(false);
     }
-  }, [resolvedJobId]);
+  }, [job?.result?.spritesheet_url, resolvedJobId, syncArrangedItems]);
 
   const handleRestart = useCallback(async () => {
-    const imageId = job?.image_id ?? workflowState?.imageMeta?.image_id;
+    const imageIds = job?.image_ids ?? workflowState?.imageMetas?.map((m) => m.image_id) ?? [];
 
     try {
       await clearRuntimeData();
     } catch {
       clearImageWorkflow();
-      if (imageId) {
+      for (const imageId of imageIds) {
         try {
           await deleteImage(imageId);
         } catch {
@@ -90,19 +151,16 @@ export default function ImageResult() {
     clearAllWorkflowState();
     clearAllImageWorkflowState();
     navigate('/', { state: createImageWorkflowRouteState() });
-  }, [job?.image_id, navigate, workflowState?.imageMeta?.image_id]);
-
-  const getItemName = useCallback((itemUrl: string) => {
-    const url = new URL(itemUrl, window.location.origin);
-    const segments = url.pathname.split('/');
-    return segments[segments.length - 1] ?? '';
-  }, []);
+  }, [job?.image_ids, navigate, workflowState?.imageMetas]);
 
   const handleDeleteItem = useCallback(async (itemUrl: string) => {
-    if (!resolvedJobId || !job?.result?.item_urls || isRepacking) return;
+    if (!resolvedJobId || isRepacking) return;
 
-    const nextUrls = job.result.item_urls.filter((currentItemUrl) => currentItemUrl !== itemUrl);
+    const nextUrls = arrangedItemUrls.filter((u) => u !== itemUrl);
     if (nextUrls.length === 0) return;
+
+    setArrangedItemUrls(nextUrls);
+    setItemsDirty(true);
 
     const nextItemNames = nextUrls.map(getItemName).filter(Boolean);
     if (nextItemNames.length !== nextUrls.length) return;
@@ -111,6 +169,7 @@ export default function ImageResult() {
     try {
       const updatedJob = await repackImageJobItems(resolvedJobId, nextItemNames);
       await mutate(updatedJob, false);
+      setItemsDirty(false);
       if (previewItem?.src === itemUrl) {
         setPreviewItem(null);
       }
@@ -119,7 +178,40 @@ export default function ImageResult() {
     } finally {
       setIsRepacking(false);
     }
-  }, [getItemName, isRepacking, job?.result?.item_urls, mutate, previewItem?.src, resolvedJobId]);
+  }, [arrangedItemUrls, getItemName, isRepacking, mutate, previewItem?.src, resolvedJobId]);
+
+  const moveItem = useCallback((fromIndex: number, toIndex: number) => {
+    setArrangedItemUrls((current) => {
+      if (toIndex < 0 || toIndex >= current.length || fromIndex === toIndex) return current;
+      const next = [...current];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      setItemsDirty(true);
+      return next;
+    });
+  }, []);
+
+  const handleDragStart = useCallback((index: number) => {
+    dragIndexRef.current = index;
+  }, []);
+
+  const handleDragOver = useCallback((event: React.DragEvent, index: number) => {
+    event.preventDefault();
+    setDragOverIndex(index);
+  }, []);
+
+  const handleDrop = useCallback((dropIndex: number) => {
+    const fromIndex = dragIndexRef.current;
+    dragIndexRef.current = null;
+    setDragOverIndex(null);
+    if (fromIndex === null) return;
+    moveItem(fromIndex, dropIndex);
+  }, [moveItem]);
+
+  const handleDragEnd = useCallback(() => {
+    dragIndexRef.current = null;
+    setDragOverIndex(null);
+  }, []);
 
   if (isLoading) {
     return <div className="py-20 text-center text-gray-500">加载中...</div>;
@@ -173,14 +265,101 @@ export default function ImageResult() {
           >
             返回首页
           </button>
-          <button
-            type="button"
-            onClick={() => void handleExport()}
-            disabled={job.status !== 'done' || exporting || isRepacking}
-            className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-500 disabled:cursor-not-allowed disabled:bg-green-300"
-          >
-            {exporting ? '导出中...' : '下载 ZIP'}
-          </button>
+          <div ref={exportRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setExportOpen(!exportOpen)}
+              disabled={job.status !== 'done' || exporting || isRepacking}
+              className="flex items-center gap-2 rounded bg-green-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-500 disabled:cursor-not-allowed disabled:bg-green-300"
+            >
+              {exporting ? '导出中...' : '导出'}
+              <svg className={`h-4 w-4 transition-transform ${exportOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {exportOpen && (
+              <div className="absolute right-0 z-10 mt-2 w-56 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => void handleExport('png')}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <span className="text-base">🖼</span>
+                  <div>
+                    <div className="font-medium">下载 PNG</div>
+                    <div className="text-xs text-gray-400">每帧 PNG 打包 ZIP</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleExport('generic')}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <span className="text-base">📦</span>
+                  <div>
+                    <div className="font-medium">下载 ZIP</div>
+                    <div className="text-xs text-gray-400">PNG + JSON 元数据</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleExport('items')}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <span className="text-base">🧩</span>
+                  <div>
+                    <div className="font-medium">逐项 PNG ZIP</div>
+                    <div className="text-xs text-gray-400">每项单独 PNG 文件</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleExport('gif')}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <span className="text-base">🎞</span>
+                  <div>
+                    <div className="font-medium">导出 GIF</div>
+                    <div className="text-xs text-gray-400">逐帧动画 GIF</div>
+                  </div>
+                </button>
+                <div className="border-t border-gray-100" />
+                <button
+                  type="button"
+                  onClick={() => void handleExport('godot')}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <span className="text-base">🎮</span>
+                  <div>
+                    <div className="font-medium">Godot 4</div>
+                    <div className="text-xs text-gray-400">SpriteFrames + AtlasTexture</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleExport('unity')}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <span className="text-base">🎯</span>
+                  <div>
+                    <div className="font-medium">Unity</div>
+                    <div className="text-xs text-gray-400">Sprite Sheet + Importer</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleExport('cocos')}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  <span className="text-base">🔧</span>
+                  <div>
+                    <div className="font-medium">Cocos Creator</div>
+                    <div className="text-xs text-gray-400">plist + animation.json</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -196,58 +375,98 @@ export default function ImageResult() {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-gray-900">单图预览</h2>
-            {isRepacking ? <span className="text-xs text-gray-500">正在更新结果...</span> : null}
-          </div>
-          <div className="mt-4 grid max-h-[70vh] gap-3 overflow-auto pr-1">
-            {(job.result?.item_urls ?? []).map((itemUrl, index) => (
-              <div key={itemUrl} className="rounded border border-gray-200 bg-gray-50 p-3">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="text-xs text-gray-500">#{index + 1}</div>
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteItem(itemUrl)}
-                    disabled={isRepacking || (job.result?.item_urls.length ?? 0) <= 1}
-                    className="rounded border border-red-200 px-2 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:border-red-100 disabled:text-red-300"
-                  >
-                    删除
-                  </button>
-                </div>
+      <div className="mb-8 rounded-lg border border-gray-200 bg-white p-5">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-gray-900">切图预览</h2>
+          {isRepacking ? <span className="text-xs text-gray-500">正在更新结果...</span> : null}
+        </div>
+        <div className="mt-4 rounded-lg border border-gray-100 bg-white p-3">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
+            {arrangedItemUrls.map((itemUrl, index) => (
+              <div
+                key={`${itemUrl}-${index}`}
+                draggable={!isRepacking}
+                onDragStart={() => handleDragStart(index)}
+                onDragOver={(event) => handleDragOver(event, index)}
+                onDrop={() => handleDrop(index)}
+                onDragEnd={handleDragEnd}
+                className={`group relative min-w-32 cursor-grab rounded border bg-gray-50 p-2 transition-all active:cursor-grabbing ${
+                  dragOverIndex === index
+                    ? 'border-gray-900 ring-2 ring-gray-900'
+                    : 'border-gray-200'
+                }`}
+              >
+                <div className="mb-1 text-center text-xs text-gray-500">#{index + 1}</div>
                 <button
                   type="button"
                   onClick={() => setPreviewItem({ src: itemUrl, label: `切图 ${index + 1}` })}
-                  className="transparent-preview-bg flex w-full items-center justify-center rounded border border-dashed border-gray-200 p-2 transition-shadow hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  className="transparent-preview-bg flex aspect-square w-full items-center justify-center overflow-hidden rounded border border-gray-200 transition-shadow hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                   title="点击放大预览"
                 >
-                  <img src={itemUrl} alt={`切图 ${index + 1}`} className="max-h-32 max-w-full object-contain" />
+                  <img src={itemUrl} alt={`切图 ${index + 1}`} className="max-h-full max-w-full object-contain" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteItem(itemUrl)}
+                  disabled={isRepacking || arrangedItemUrls.length <= 1}
+                  className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs text-red-500 shadow-sm opacity-0 transition-opacity group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  &times;
                 </button>
               </div>
             ))}
           </div>
+          <div className="mt-3 text-xs text-gray-400">
+            拖拽调整顺序，导出前会自动按当前顺序重新打包。
+          </div>
+        </div>
+      </div>
+
+      {arrangedItemUrls.length > 1 && (
+        <div className="mb-8 rounded-lg border border-gray-200 bg-white p-5">
+          <h2 className="text-lg font-semibold text-gray-900">逐帧播放</h2>
+          <div className="mt-4 flex flex-col items-center gap-4">
+            <div className="transparent-preview-bg flex h-64 w-full items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
+              <img
+                src={arrangedItemUrls[playingItemIndex]}
+                alt={`切图 ${playingItemIndex + 1}`}
+                className="max-h-full max-w-full object-contain"
+              />
+            </div>
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => setIsPlayingItems((prev) => !prev)}
+                className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
+              >
+                {isPlayingItems ? '暂停播放' : '逐帧播放'}
+              </button>
+              <span className="text-sm text-gray-500">
+                {playingItemIndex + 1} / {arrangedItemUrls.length}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <h2 className="text-lg font-semibold text-gray-900">Spritesheet 预览</h2>
+          {job.result?.spritesheet_url ? (
+            <div className="mt-4 overflow-auto rounded border border-gray-200 bg-gray-50 p-3">
+              <img src={job.result.spritesheet_url} alt="Spritesheet 预览" className="h-auto max-w-full" />
+            </div>
+          ) : (
+            <div className="mt-4 text-sm text-gray-500">正在生成 spritesheet...</div>
+          )}
         </div>
 
-        <div className="space-y-6">
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
-            <h2 className="text-lg font-semibold text-gray-900">Spritesheet 预览</h2>
-            {job.result?.spritesheet_url ? (
-              <div className="mt-4 overflow-auto rounded border border-gray-200 bg-gray-50 p-3">
-                <img src={job.result.spritesheet_url} alt="Spritesheet 预览" className="h-auto max-w-full" />
-              </div>
-            ) : (
-              <div className="mt-4 text-sm text-gray-500">正在生成 spritesheet...</div>
-            )}
-          </div>
-
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
-            <h2 className="text-lg font-semibold text-gray-900">结果说明</h2>
-            <div className="mt-4 space-y-2 text-sm text-gray-600">
-              <div>图块数量: {job.result?.item_urls.length ?? 0}</div>
-              <div>导出内容: 透明 PNG、spritesheet、spritesheet.json、manifest.json</div>
-              <div>排序规则: 自上而下，自左而右</div>
-            </div>
+        <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <h2 className="text-lg font-semibold text-gray-900">结果说明</h2>
+          <div className="mt-4 space-y-2 text-sm text-gray-600">
+            <div>图块数量: {arrangedItemUrls.length}</div>
+            <div>导出内容: 透明 PNG、spritesheet、spritesheet.json、manifest.json</div>
+            <div>排序规则: 自上而下，自左而右</div>
           </div>
         </div>
       </div>

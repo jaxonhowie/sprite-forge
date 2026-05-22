@@ -29,7 +29,7 @@ from .models import (
     RepackImageJobItemsRequest,
 )
 from . import store
-from .exporters import build_engine_export, build_image_export
+from .exporters import build_engine_export, build_image_export, build_image_gif
 from .media.extract import extract_frame_with_retry, get_video_info, save_frame_preview
 from .media.segment import detect_segments
 from .worker import (
@@ -335,11 +335,14 @@ async def create_image_job(
     request: CreateImageJobRequest,
     background_tasks: BackgroundTasks,
 ):
-    image_meta = store.get_image_meta(request.image_id)
-    if not image_meta:
-        raise HTTPException(404, "图片不存在")
+    image_ids = []
+    for entry in request.images:
+        image_meta = store.get_image_meta(entry.image_id)
+        if not image_meta:
+            raise HTTPException(404, f"图片不存在: {entry.image_id}")
+        image_ids.append(entry.image_id)
 
-    job = store.create_image_job(request.image_id, request)
+    job = store.create_image_job(image_ids, request)
     background_tasks.add_task(run_image_job_background, job.id)
 
     return JobResponse(job_id=job.id, status=job.status)
@@ -517,7 +520,11 @@ async def export_job(
 
 
 @app.get("/api/image-jobs/{job_id}/export.zip")
-async def export_image_job(job_id: str, background_tasks: BackgroundTasks):
+async def export_image_job(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    target: Literal["generic", "items", "gif", "cocos", "unity", "godot"] = "generic",
+):
     job = store.get_image_job(job_id)
     if not job:
         raise HTTPException(404, "图片任务不存在")
@@ -526,19 +533,33 @@ async def export_image_job(job_id: str, background_tasks: BackgroundTasks):
     if not job_dir:
         raise HTTPException(404, "图片任务目录不存在")
 
-    sheet_path = job_dir / "spritesheet.png"
-    meta_path = job_dir / "spritesheet.json"
-    if not sheet_path.exists() or not meta_path.exists():
-        raise HTTPException(400, "切图结果尚未生成")
+    if target == "gif":
+        gif_path = store.TMP_DIR / f"{job_id}_image.gif"
+        try:
+            build_image_gif(job_dir, gif_path)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        background_tasks.add_task(gif_path.unlink, missing_ok=True)
+        return FileResponse(
+            gif_path,
+            media_type="image/gif",
+            filename=f"image_segments_{job_id}.gif",
+        )
 
-    zip_path = store.TMP_DIR / f"{job_id}_image_export.zip"
-    build_image_export(job_id, job_dir, zip_path)
+    if target != "items":
+        sheet_path = job_dir / "spritesheet.png"
+        meta_path = job_dir / "spritesheet.json"
+        if not sheet_path.exists() or not meta_path.exists():
+            raise HTTPException(400, "切图结果尚未生成")
+
+    zip_path = store.TMP_DIR / f"{job_id}_{target}_image_export.zip"
+    build_image_export(job_id, job_dir, zip_path, target)
     background_tasks.add_task(zip_path.unlink, missing_ok=True)
 
     return FileResponse(
         zip_path,
         media_type="application/zip",
-        filename=f"image_segments_{job_id}.zip",
+        filename=f"image_segments_{job_id}_{target}.zip",
     )
 
 

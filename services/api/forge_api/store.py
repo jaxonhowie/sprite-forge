@@ -180,7 +180,7 @@ def create_job(
 
 
 def create_image_job(
-    image_id: str,
+    image_ids: list[str],
     params: CreateImageJobRequest,
 ) -> ImageJobStatusResponse:
     job_id = f"ij_{generate_id()}"
@@ -191,7 +191,7 @@ def create_image_job(
     now = datetime.now()
     job = ImageJobStatusResponse(
         id=job_id,
-        image_id=image_id,
+        image_ids=image_ids,
         status=JobStatus.PENDING,
         progress=0.0,
         stage="",
@@ -362,7 +362,7 @@ def delete_image(image_id: str) -> bool:
             if not job_dir.is_dir():
                 continue
             job = get_image_job(job_dir.name)
-            if job and job.image_id == image_id:
+            if job and image_id in job.image_ids:
                 shutil.rmtree(job_dir, ignore_errors=True)
 
     return True

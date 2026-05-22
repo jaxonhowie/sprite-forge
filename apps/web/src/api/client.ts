@@ -70,9 +70,13 @@ export interface JobResponse {
   status: string;
 }
 
-export interface CreateImageJobRequest {
+export interface ImageEntry {
   image_id: string;
   boxes: SegmentBox[];
+}
+
+export interface CreateImageJobRequest {
+  images: ImageEntry[];
   remove_bg: boolean;
   layout: {
     cols: number;
@@ -122,7 +126,7 @@ export interface JobStatus {
 
 export interface ImageJobStatus {
   id: string;
-  image_id: string;
+  image_ids: string[];
   status: string;
   progress: number;
   stage: string;
@@ -139,6 +143,7 @@ export interface ImageJobStatus {
 }
 
 export type EngineExportTarget = 'generic' | 'cocos' | 'unity' | 'godot' | 'frames';
+export type ImageExportTarget = 'generic' | 'items' | 'gif' | 'cocos' | 'unity' | 'godot';
 
 export interface WsJobUpdate {
   stage: string;
@@ -330,6 +335,7 @@ export function getFileUrl(path: string): string {
   return `/files${path}`;
 }
 
-export function getImageJobExportUrl(jobId: string): string {
-  return `/api/image-jobs/${jobId}/export.zip`;
+export function getImageJobExportUrl(jobId: string, target: ImageExportTarget = 'generic'): string {
+  const params = target === 'generic' ? '' : `?target=${target}`;
+  return `/api/image-jobs/${jobId}/export.zip${params}`;
 }

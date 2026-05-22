@@ -8,6 +8,7 @@ from PIL import Image
 
 
 ExportTarget = Literal["generic", "cocos", "unity", "godot", "frames"]
+ImageExportTarget = Literal["generic", "items", "gif", "cocos", "unity", "godot"]
 
 ANIMATION_FPS = 12
 
@@ -334,19 +335,101 @@ def build_engine_export(job_id: str, job_dir: Path, zip_path: Path, target: Expo
     raise ValueError(f"不支持的导出目标: {target}")
 
 
-def build_image_export(job_id: str, job_dir: Path, zip_path: Path) -> None:
+GIF_FRAME_DURATION_MS = 160  # ~6.25 FPS, matches frontend playback
+
+
+def build_image_gif(job_dir: Path, gif_path: Path) -> None:
+    items_dir = job_dir / "items"
+    item_paths = sorted(items_dir.glob("*.png")) if items_dir.exists() else []
+    if not item_paths:
+        raise ValueError("没有可导出的逐项 PNG")
+
+    frames: list[Image.Image] = []
+    max_w, max_h = 0, 0
+    for item_path in item_paths:
+        with Image.open(item_path) as img:
+            frame = img.convert("RGBA")
+            max_w = max(max_w, frame.width)
+            max_h = max(max_h, frame.height)
+            frames.append(frame.copy())
+
+    composited: list[Image.Image] = []
+    for frame in frames:
+        canvas = Image.new("RGBA", (max_w, max_h), (255, 255, 255, 255))
+        offset_x = (max_w - frame.width) // 2
+        offset_y = (max_h - frame.height) // 2
+        canvas.paste(frame, (offset_x, offset_y), frame)
+        composited.append(canvas.convert("RGB"))
+
+    composited[0].save(
+        gif_path,
+        save_all=True,
+        append_images=composited[1:],
+        duration=GIF_FRAME_DURATION_MS,
+        loop=0,
+    )
+
+
+def build_image_export(job_id: str, job_dir: Path, zip_path: Path, target: ImageExportTarget = "generic") -> None:
     zip_path.unlink(missing_ok=True)
 
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
-        root = f"image_segments_{job_id}"
-        _write_readme(archive, root, "图片切图")
-
-        for filename in ("spritesheet.png", "spritesheet.json", "manifest.json"):
-            source_path = job_dir / filename
-            if source_path.exists():
-                archive.write(source_path, f"{root}/{filename}")
-
+    if target == "items":
         items_dir = job_dir / "items"
-        if items_dir.exists():
-            for item_path in sorted(items_dir.glob("*.png")):
-                archive.write(item_path, f"{root}/items/{item_path.name}")
+        item_paths = sorted(items_dir.glob("*.png")) if items_dir.exists() else []
+        if not item_paths:
+            raise ValueError("没有可导出的逐项 PNG")
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+            root = f"items_{job_id}"
+            for item_path in item_paths:
+                archive.write(item_path, f"{root}/{item_path.name}")
+        return
+
+    if target == "generic":
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+            root = f"image_segments_{job_id}"
+            _write_readme(archive, root, "图片切图")
+            for filename in ("spritesheet.png", "spritesheet.json", "manifest.json"):
+                source_path = job_dir / filename
+                if source_path.exists():
+                    archive.write(source_path, f"{root}/{filename}")
+            items_dir = job_dir / "items"
+            if items_dir.exists():
+                for item_path in sorted(items_dir.glob("*.png")):
+                    archive.write(item_path, f"{root}/items/{item_path.name}")
+        return
+
+    meta = _read_meta(job_dir)
+    sheet_size = _sheet_size(job_dir)
+
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        if target == "cocos":
+            archive.write(job_dir / "spritesheet.png", "cocos/spritesheet.png")
+            archive.writestr(
+                "cocos/spritesheet.plist",
+                plistlib.dumps(_build_cocos_plist(meta, sheet_size)).decode("utf-8"),
+            )
+            archive.writestr(
+                "cocos/animation.json",
+                json.dumps(_build_animation_meta(meta), ensure_ascii=False, indent=2),
+            )
+            _write_readme(archive, "cocos", "Cocos Creator")
+            return
+
+        if target == "unity":
+            archive.write(job_dir / "spritesheet.png", "unity/spritesheet.png")
+            archive.writestr(
+                "unity/spritesheet.spriteforge.json",
+                json.dumps(_build_unity_meta(meta, sheet_size), ensure_ascii=False, indent=2),
+            )
+            archive.writestr("unity/Editor/SpriteForgeImporter.cs", UNITY_IMPORTER)
+            _write_readme(archive, "unity", "Unity3D")
+            return
+
+        if target == "godot":
+            archive.write(job_dir / "spritesheet.png", "godot/spritesheet.png")
+            archive.writestr("godot/spritesheet.json", (job_dir / "spritesheet.json").read_text(encoding="utf-8"))
+            archive.writestr("godot/sprite_frames.tres", _build_godot_tres(meta))
+            _write_readme(archive, "godot", "Godot 4")
+            return
+
+    raise ValueError(f"不支持的导出目标: {target}")

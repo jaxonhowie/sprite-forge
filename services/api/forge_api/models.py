@@ -115,9 +115,13 @@ class DetectSegmentsResponse(BaseModel):
     segments: List[DetectedSegment]
 
 
-class CreateImageJobRequest(BaseModel):
+class ImageEntry(BaseModel):
     image_id: str = Field(..., min_length=1, max_length=64)
     boxes: List[SegmentBox] = Field(..., min_length=1)
+
+
+class CreateImageJobRequest(BaseModel):
+    images: List[ImageEntry] = Field(..., min_length=1)
     remove_bg: bool = True
     layout: Layout = Layout()
 
@@ -170,7 +174,7 @@ class JobStatusResponse(BaseModel):
 
 class ImageJobStatusResponse(BaseModel):
     id: str
-    image_id: str
+    image_ids: List[str]
     status: JobStatus
     progress: float
     stage: str

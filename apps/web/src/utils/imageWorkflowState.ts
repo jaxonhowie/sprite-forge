@@ -11,14 +11,14 @@ export interface ImageWorkflowSettings {
 
 export interface ImageWorkflowState {
   currentStep: ImageWorkflowStep;
-  imageMeta?: ImageUploadResponse;
+  imageMetas?: ImageUploadResponse[];
   segments: DetectedSegment[];
   settings: ImageWorkflowSettings;
   jobId?: string;
 }
 
 export interface ImageWorkflowRouteState {
-  imageMeta?: ImageUploadResponse;
+  imageMetas?: ImageUploadResponse[];
   segments?: DetectedSegment[];
   jobId?: string;
 }
@@ -44,7 +44,7 @@ export function createImageWorkflowRouteState(
   state: ImageWorkflowRouteState = {}
 ): ImageWorkflowRouteState {
   return {
-    imageMeta: state.imageMeta,
+    imageMetas: state.imageMetas,
     segments: state.segments ? [...state.segments] : undefined,
     jobId: state.jobId,
   };
@@ -58,9 +58,15 @@ export function getImageWorkflowState(): ImageWorkflowState | null {
     const parsed = JSON.parse(stored);
     if (!parsed || typeof parsed !== 'object') return null;
 
+    // Backward compatibility: migrate old single imageMeta to array
+    let imageMetas: ImageUploadResponse[] | undefined = parsed.imageMetas;
+    if (!imageMetas && parsed.imageMeta) {
+      imageMetas = [parsed.imageMeta];
+    }
+
     return {
       currentStep: parsed.currentStep ?? 'upload',
-      imageMeta: parsed.imageMeta,
+      imageMetas,
       segments: Array.isArray(parsed.segments) ? parsed.segments : [],
       settings: {
         ...defaultImageWorkflowSettings,

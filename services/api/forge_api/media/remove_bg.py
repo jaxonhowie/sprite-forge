@@ -5,11 +5,13 @@ _rembg_session = None
 WHITE_BG_BORDER_RATIO = 0.03
 WHITE_BG_MIN_BORDER = 2
 WHITE_BG_MAX_BORDER = 24
-WHITE_BG_BASE_DELTA = 18.0
-WHITE_BG_MAX_DELTA = 30.0
-WHITE_BG_VALUE_FLOOR = 150
-WHITE_BG_MAX_SATURATION = 48
+WHITE_BG_BASE_DELTA = 24.0
+WHITE_BG_MAX_DELTA = 42.0
+WHITE_BG_VALUE_FLOOR = 136
+WHITE_BG_MAX_SATURATION = 64
 WHITE_BG_EFFECT_SATURATION = 56
+WHITE_BG_PROTECT_MIN_AREA_RATIO = 0.002
+WHITE_BG_PROTECT_MIN_AREA = 24
 
 
 def _protect_red_effects(rgb_frame: np.ndarray, rgba_result: np.ndarray) -> np.ndarray:
@@ -73,6 +75,52 @@ def _sample_border_pixels(frame: np.ndarray, border: int) -> np.ndarray:
     )
 
 
+def _build_white_bg_subject_mask(
+    delta: np.ndarray,
+    value: np.ndarray,
+    saturation: np.ndarray,
+    background_value: float,
+    background_saturation: float,
+) -> np.ndarray:
+    height, width = delta.shape[:2]
+    protect_delta = 18.0
+    protect_value = max(0, int(background_value - 18))
+    protect_saturation = max(28, int(background_saturation + 14))
+
+    seed = (
+        (delta >= protect_delta)
+        | (value <= protect_value)
+        | (saturation >= protect_saturation)
+    ).astype(np.uint8)
+
+    seed = cv2.morphologyEx(
+        seed,
+        cv2.MORPH_OPEN,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2)),
+    )
+    seed = cv2.morphologyEx(
+        seed,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)),
+        iterations=2,
+    )
+    seed = cv2.dilate(
+        seed,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
+        iterations=1,
+    )
+
+    contours, _ = cv2.findContours(seed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    min_area = max(WHITE_BG_PROTECT_MIN_AREA, int(height * width * WHITE_BG_PROTECT_MIN_AREA_RATIO))
+    subject_mask = np.zeros((height, width), dtype=np.uint8)
+    for contour in contours:
+        if cv2.contourArea(contour) < min_area:
+            continue
+        cv2.drawContours(subject_mask, [contour], -1, 1, thickness=cv2.FILLED)
+
+    return subject_mask.astype(bool)
+
+
 def _remove_white_background(frame: np.ndarray) -> np.ndarray:
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     rgba_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2RGBA)
@@ -90,20 +138,28 @@ def _remove_white_background(frame: np.ndarray) -> np.ndarray:
     background_value = float(np.median(border_hsv[:, 2]))
     background_saturation = float(np.median(border_hsv[:, 1]))
     lab_variance = float(np.percentile(np.linalg.norm(border_lab - background_lab, axis=1), 90))
-    delta_threshold = min(WHITE_BG_MAX_DELTA, WHITE_BG_BASE_DELTA + lab_variance * 0.35)
-    value_floor = max(WHITE_BG_VALUE_FLOOR, int(background_value - 28))
-    saturation_ceiling = max(WHITE_BG_MAX_SATURATION, int(background_saturation + 18))
+    delta_threshold = min(WHITE_BG_MAX_DELTA, WHITE_BG_BASE_DELTA + lab_variance * 0.55)
+    value_floor = max(WHITE_BG_VALUE_FLOOR, int(background_value - 42))
+    saturation_ceiling = max(WHITE_BG_MAX_SATURATION, int(background_saturation + 28))
 
     lab_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2LAB).astype(np.float32)
     hsv_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2HSV)
     value = hsv_frame[:, :, 2]
     saturation = hsv_frame[:, :, 1]
     delta = np.linalg.norm(lab_frame - background_lab.astype(np.float32), axis=2)
+    subject_mask = _build_white_bg_subject_mask(
+        delta,
+        value,
+        saturation,
+        background_value,
+        background_saturation,
+    )
 
     candidate_mask = (
         (delta <= delta_threshold)
         & (value >= value_floor)
         & (saturation <= saturation_ceiling)
+        & ~subject_mask
     ).astype(np.uint8)
     candidate_mask = cv2.morphologyEx(
         candidate_mask,
@@ -127,6 +183,7 @@ def _remove_white_background(frame: np.ndarray) -> np.ndarray:
 
     color_effect_mask = saturation >= WHITE_BG_EFFECT_SATURATION
     background_mask &= ~color_effect_mask
+    background_mask &= ~subject_mask
 
     alpha = np.where(background_mask, 0, 255).astype(np.uint8)
     alpha = cv2.GaussianBlur(alpha, (0, 0), sigmaX=1.0, sigmaY=1.0)
