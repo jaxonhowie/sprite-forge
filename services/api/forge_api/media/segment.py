@@ -7,7 +7,12 @@ import numpy as np
 MIN_SEGMENT_AREA = 400
 MERGE_GAP = 20
 EDGE_PADDING = 4
-BG_MARGIN = 20  # 前景阈值 = 检测到的背景亮度 - 此值
+SEG_BG_BORDER_RATIO = 0.05
+SEG_BG_MIN_BORDER = 2
+SEG_BG_MAX_BORDER = 24
+SEG_BG_BASE_DELTA = 28.0
+SEG_BG_MAX_DELTA = 72.0
+SEG_BG_VARIANCE_SCALE = 1.6
 
 
 def _merge_boxes(boxes: list[tuple[int, int, int, int]], gap: int) -> list[tuple[int, int, int, int]]:
@@ -50,18 +55,40 @@ def _merge_boxes(boxes: list[tuple[int, int, int, int]], gap: int) -> list[tuple
     return merged
 
 
-def _detect_background_brightness(gray: np.ndarray) -> int:
-    """从图片四角采样，返回背景亮度中位数。"""
-    h, w = gray.shape[:2]
-    strip = max(1, min(h, w) // 20)
+def _sample_border_pixels(image: np.ndarray, border: int) -> np.ndarray:
+    top = image[:border, :, :]
+    bottom = image[-border:, :, :]
+    left = image[border:-border or None, :border, :]
+    right = image[border:-border or None, -border:, :]
+    return np.concatenate(
+        [
+            top.reshape(-1, 3),
+            bottom.reshape(-1, 3),
+            left.reshape(-1, 3),
+            right.reshape(-1, 3),
+        ],
+        axis=0,
+    )
 
-    samples = np.concatenate([
-        gray[:strip, :].ravel(),
-        gray[-strip:, :].ravel(),
-        gray[:, :strip].ravel(),
-        gray[:, -strip:].ravel(),
-    ])
-    return int(np.median(samples))
+
+def _detect_background_lab(image_bgr: np.ndarray) -> tuple[np.ndarray, float]:
+    h, w = image_bgr.shape[:2]
+    border = max(
+        SEG_BG_MIN_BORDER,
+        min(SEG_BG_MAX_BORDER, int(round(min(h, w) * SEG_BG_BORDER_RATIO))),
+    )
+
+    rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+    border_pixels = _sample_border_pixels(rgb, border)
+    border_lab = cv2.cvtColor(border_pixels.reshape(1, -1, 3), cv2.COLOR_RGB2LAB).reshape(-1, 3)
+
+    background_lab = np.median(border_lab, axis=0)
+    variance = float(np.percentile(np.linalg.norm(border_lab - background_lab, axis=1), 90))
+    delta_threshold = min(
+        SEG_BG_MAX_DELTA,
+        SEG_BG_BASE_DELTA + variance * SEG_BG_VARIANCE_SCALE,
+    )
+    return background_lab, delta_threshold
 
 
 def detect_segments(image_path: Path) -> list[dict[str, int]]:
@@ -71,13 +98,14 @@ def detect_segments(image_path: Path) -> list[dict[str, int]]:
 
     h_img, w_img = image.shape[:2]
 
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    background_lab, delta_threshold = _detect_background_lab(image)
 
-    bg_brightness = _detect_background_brightness(gray)
-    threshold = max(128, bg_brightness - BG_MARGIN)
+    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    lab_frame = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
+    delta = np.linalg.norm(lab_frame - background_lab.astype(np.float32), axis=2)
 
-    _, background = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
-    foreground = cv2.bitwise_not(background)
+    background_mask = delta <= delta_threshold
+    foreground = (~background_mask).astype(np.uint8) * 255
 
     # 先闭运算填充精灵内部缝隙，再开运算去除噪点
     close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))

@@ -375,7 +375,7 @@ async def process_image_job(job_id: str):
 
             rgb_item = np.array(Image.fromarray(item, "RGBA").convert("RGB"))
             bgr_item = rgb_item[:, :, ::-1]
-            rgba_item = await asyncio.to_thread(remove_background, bgr_item, "white")
+            rgba_item = await asyncio.to_thread(remove_background, bgr_item, "solid")
             processed_items.append(rgba_item)
             store.update_image_job(job_id, progress=progress, stage="rembg")
 

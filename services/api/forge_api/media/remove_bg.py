@@ -13,6 +13,16 @@ WHITE_BG_EFFECT_SATURATION = 56
 WHITE_BG_PROTECT_MIN_AREA_RATIO = 0.002
 WHITE_BG_PROTECT_MIN_AREA = 24
 
+SOLID_BG_BORDER_RATIO = 0.03
+SOLID_BG_MIN_BORDER = 2
+SOLID_BG_MAX_BORDER = 24
+SOLID_BG_BASE_DELTA = 28.0
+SOLID_BG_MAX_DELTA = 64.0
+SOLID_BG_VARIANCE_SCALE = 1.6
+SOLID_BG_PROTECT_DELTA = 24.0
+SOLID_BG_PROTECT_MIN_AREA_RATIO = 0.002
+SOLID_BG_PROTECT_MIN_AREA = 24
+
 
 def _protect_red_effects(rgb_frame: np.ndarray, rgba_result: np.ndarray) -> np.ndarray:
     rgba_result = np.array(rgba_result, copy=True)
@@ -191,9 +201,94 @@ def _remove_white_background(frame: np.ndarray) -> np.ndarray:
     return rgba_frame
 
 
+def _build_solid_bg_subject_mask(delta: np.ndarray) -> np.ndarray:
+    height, width = delta.shape[:2]
+
+    seed = (delta >= SOLID_BG_PROTECT_DELTA).astype(np.uint8)
+    seed = cv2.morphologyEx(
+        seed,
+        cv2.MORPH_OPEN,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2)),
+    )
+    seed = cv2.morphologyEx(
+        seed,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)),
+        iterations=2,
+    )
+    seed = cv2.dilate(
+        seed,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
+        iterations=1,
+    )
+
+    contours, _ = cv2.findContours(seed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    min_area = max(SOLID_BG_PROTECT_MIN_AREA, int(height * width * SOLID_BG_PROTECT_MIN_AREA_RATIO))
+    subject_mask = np.zeros((height, width), dtype=np.uint8)
+    for contour in contours:
+        if cv2.contourArea(contour) < min_area:
+            continue
+        cv2.drawContours(subject_mask, [contour], -1, 1, thickness=cv2.FILLED)
+
+    return subject_mask.astype(bool)
+
+
+def _remove_solid_color_background(frame: np.ndarray) -> np.ndarray:
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    rgba_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2RGBA)
+    height, width = rgb_frame.shape[:2]
+    border = max(
+        SOLID_BG_MIN_BORDER,
+        min(SOLID_BG_MAX_BORDER, int(round(min(height, width) * SOLID_BG_BORDER_RATIO))),
+    )
+
+    border_pixels = _sample_border_pixels(rgb_frame, border)
+    border_lab = cv2.cvtColor(border_pixels.reshape(1, -1, 3), cv2.COLOR_RGB2LAB).reshape(-1, 3)
+
+    background_lab = np.median(border_lab, axis=0)
+    lab_variance = float(np.percentile(np.linalg.norm(border_lab - background_lab, axis=1), 90))
+    delta_threshold = min(
+        SOLID_BG_MAX_DELTA,
+        SOLID_BG_BASE_DELTA + lab_variance * SOLID_BG_VARIANCE_SCALE,
+    )
+
+    lab_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2LAB).astype(np.float32)
+    delta = np.linalg.norm(lab_frame - background_lab.astype(np.float32), axis=2)
+    subject_mask = _build_solid_bg_subject_mask(delta)
+
+    candidate_mask = ((delta <= delta_threshold) & ~subject_mask).astype(np.uint8)
+    candidate_mask = cv2.morphologyEx(
+        candidate_mask,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
+    )
+
+    _, labels = cv2.connectedComponents(candidate_mask)
+    background_labels = np.unique(
+        np.concatenate(
+            [
+                labels[0, :],
+                labels[-1, :],
+                labels[:, 0],
+                labels[:, -1],
+            ]
+        )
+    )
+    background_labels = background_labels[background_labels != 0]
+    background_mask = np.isin(labels, background_labels)
+    background_mask &= ~subject_mask
+
+    alpha = np.where(background_mask, 0, 255).astype(np.uint8)
+    alpha = cv2.GaussianBlur(alpha, (0, 0), sigmaX=1.0, sigmaY=1.0)
+    rgba_frame[:, :, 3] = alpha
+    return rgba_frame
+
+
 def remove_background(frame: np.ndarray, mode: str = "standard") -> np.ndarray:
     if mode == "white":
         return _remove_white_background(frame)
+    if mode == "solid":
+        return _remove_solid_color_background(frame)
 
     from rembg import remove
 

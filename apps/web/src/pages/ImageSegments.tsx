@@ -21,7 +21,7 @@ function SegmentOverlay({
   height: number;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
+    <div className="relative overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
       <img src={imageUrl} alt="切图预览" className="h-auto max-w-full" />
       <div className="pointer-events-none absolute inset-0">
         {segments.map((segment) => (
@@ -155,17 +155,17 @@ export default function ImageSegments() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">确认切图结果</h1>
-        <p className="mt-2 text-sm text-gray-500">
-          系统会基于白底自动识别图块，再逐块去背景并导出。
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">确认切图结果</h1>
+        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+          系统会自动识别图块，再逐块识别主体并去除外部纯色背景后导出。
           {imageMetas.length > 1 && ` 共 ${imageMetas.length} 张图片，已确认 ${Object.keys(allSegments).length} 张。`}
         </p>
       </div>
 
       {error && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+        <div className="mb-6 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 px-4 py-3 text-sm text-red-600 dark:text-red-400">
           {error}
         </div>
       )}
@@ -181,10 +181,10 @@ export default function ImageSegments() {
                 onClick={() => setCurrentIndex(index)}
                 className={`flex h-10 min-w-10 items-center justify-center rounded-full border text-sm font-medium transition ${
                   index === currentIndex
-                    ? 'border-gray-900 bg-gray-900 text-white'
+                    ? 'border-gray-900 bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
                     : confirmed
-                      ? 'border-green-300 bg-green-50 text-green-700'
-                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                      ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300'
+                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
                 }`}
               >
                 {index + 1}
@@ -195,9 +195,9 @@ export default function ImageSegments() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
           {isDetecting ? (
-            <div className="flex min-h-[320px] items-center justify-center text-sm text-gray-500">正在自动识别图块...</div>
+            <div className="flex min-h-[320px] items-center justify-center text-sm text-gray-500 dark:text-gray-400">正在自动识别图块...</div>
           ) : (
             <SegmentOverlay
               imageUrl={currentImage.url}
@@ -208,45 +208,45 @@ export default function ImageSegments() {
           )}
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
-          <h2 className="text-lg font-semibold text-gray-900">处理设置</h2>
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">处理设置</h2>
           <div className="mt-4 space-y-4">
-            <div className="rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
+            <div className="rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 text-sm text-gray-600 dark:text-gray-400">
               {imageMetas.length > 1 && <div>当前: 第 {currentIndex + 1} / {imageMetas.length} 张</div>}
               <div>源图尺寸: {currentImage.width} × {currentImage.height}</div>
               <div className="mt-1">识别图块: {currentSegments.length} 个</div>
-              <div className="mt-1">背景处理: 自动去背景</div>
+              <div className="mt-1">背景处理: 识别主体去除纯色背景</div>
               {totalItems > 0 && <div className="mt-1 font-medium">合并总计: {totalItems} 个图块</div>}
             </div>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-gray-700">精灵表列数</span>
+              <span className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">精灵表列数</span>
               <input
                 type="number"
                 min={1}
                 max={32}
                 value={cols}
                 onChange={(e) => setCols(Number(e.target.value))}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500"
+                className="w-full rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm outline-none transition focus:border-blue-500 dark:focus:border-blue-400"
               />
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-medium text-gray-700">图块间距</span>
+              <span className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">图块间距</span>
               <input
                 type="number"
                 min={0}
                 max={20}
                 value={padding}
                 onChange={(e) => setPadding(Number(e.target.value))}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500"
+                className="w-full rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm outline-none transition focus:border-blue-500 dark:focus:border-blue-400"
               />
             </label>
 
             <button
               type="button"
               onClick={() => navigate('/image')}
-              className="w-full rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              className="w-full rounded border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 transition hover:bg-gray-50 dark:hover:bg-gray-800"
             >
               重新上传
             </button>
@@ -254,7 +254,7 @@ export default function ImageSegments() {
               type="button"
               onClick={() => void handleStart()}
               disabled={isDetecting || isSubmitting || !allConfirmed}
-              className="w-full rounded bg-green-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-500 disabled:cursor-not-allowed disabled:bg-green-300"
+              className="w-full rounded bg-green-600 dark:bg-green-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-500 disabled:cursor-not-allowed disabled:bg-green-300"
             >
               {isSubmitting ? '正在创建任务...' : allConfirmed ? '开始处理' : '请确认所有图片'}
             </button>

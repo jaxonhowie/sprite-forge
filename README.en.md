@@ -6,7 +6,7 @@ Sprite Forge is a small full-stack asset processing tool with three independent 
 
 - `Video Processing`: upload a video, extract frames, remove backgrounds, fine-tune per-frame offsets, and export a sprite sheet.
 - `Multi-Video Compose`: extract keyframes from multiple videos, align them with calibration, and combine into a single sprite sheet.
-- `Image Slicing`: upload a white-background asset sheet, detect isolated items automatically, remove each background, and export the results.
+- `Image Slicing`: upload a solid-color-background asset sheet, detect isolated items automatically, remove each background, and export the results.
 
 > For personal interest use only. Commercial use is not allowed.
 
@@ -89,7 +89,7 @@ Main features:
 - Drag-and-drop frame reordering and per-frame X/Y offset adjustment on the result page
 - Frame-by-frame playback preview
 - Optional lighting normalization to unify brightness and contrast
-- Multi-target export: per-frame PNG ZIP, sprite sheet + JSON, Godot 4, Unity, Cocos Creator
+- Multi-target export: per-frame PNG ZIP, GIF animation, sprite sheet + JSON, Godot 4, Unity, Cocos Creator
 
 Typical flow:
 
@@ -112,18 +112,18 @@ Main features:
 - Three background removal modes: standard, conservative (preserves glow/aura), white (removes only pure white)
 - Optional lighting normalization
 - Drag-and-drop reordering of the combined frame list
-- Combined sprite sheet export
+- Multi-target export: per-frame PNG ZIP, sprite sheet + JSON, GIF animation, Godot 4, Unity, Cocos Creator
 
 ### 3. Image Slicing
 
-Best for white-background UI sheets or asset boards where each item is visually separated.
+Best for solid-color-background UI sheets or asset boards where each item is visually separated.
 
 Main features:
 
 - Multi-image upload: detect items per image independently, merge all into one sprite sheet
-- Adaptive threshold detection, compatible with light-colored assets and internal white gaps
+- LAB color-distance based adaptive item detection, compatible with any solid-color background and internal gaps within assets
 - Detected segments shown as blue-bordered overlays with numbered labels for easy confirmation
-- Background removal item by item
+- Subject-aware removal of the external solid-color background per item
 - Horizontal grid preview with drag-and-drop reordering and per-item deletion
 - Click any item to zoom into a full-size preview
 - Frame-by-frame playback preview
@@ -145,6 +145,6 @@ Typical flow:
 
 ## Notes
 
-- Image Slicing currently assumes white or near-white backgrounds with visible spacing between items.
+- Image Slicing currently assumes a solid-color background with visible spacing between items.
 - The "white" background removal mode only removes pure/near-pure white areas, ideal for assets with built-in glow effects; "conservative" mode preserves semi-transparent edges and auras.
 - Files under `data/` are generated at runtime and should not normally be edited manually.
