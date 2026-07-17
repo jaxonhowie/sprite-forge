@@ -244,13 +244,13 @@ export default function Capture() {
   }, [seededMeta, videoId, workflowState?.videoMeta]);
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">截取关键帧</h2>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">截取关键帧</h2>
         <button
           onClick={handleReupload}
           disabled={isAutoCapturing}
-          className="self-start rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 sm:self-auto"
+          className="self-start rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 sm:self-auto"
         >
           重新上传视频
         </button>
@@ -258,7 +258,7 @@ export default function Capture() {
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <div className="mb-4 mx-auto flex h-[256px] w-[256px] items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-gray-900">
+          <div className="mb-4 mx-auto flex h-[256px] w-[256px] items-center justify-center overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-900">
             {videoUrl && (
               <video
                 ref={videoRef}
@@ -281,41 +281,41 @@ export default function Capture() {
             <button
               onClick={() => void stepBackward()}
               disabled={isAutoCapturing}
-              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
             >
               &larr; 前一帧
             </button>
             <button
               onClick={togglePlay}
               disabled={isAutoCapturing}
-              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
             >
               {isPlaying ? '暂停' : '播放'}
             </button>
             <button
               onClick={handleMarkFrame}
               disabled={isAutoCapturing}
-              className="rounded-lg border border-gray-200 bg-white px-6 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-6 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
             >
               标记帧 (Space)
             </button>
             <button
               onClick={() => void stepForward()}
               disabled={isAutoCapturing}
-              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
             >
               后一帧 &rarr;
             </button>
           </div>
 
-          <div className="mt-3 text-center text-sm text-gray-400">
+          <div className="mt-3 text-center text-sm text-gray-400 dark:text-gray-500">
             当前时间: {formatTime(currentTime)}
           </div>
         </div>
 
         <div>
-          <div className="rounded-xl border border-gray-200 p-4">
-            <h3 className="mb-4 text-lg font-bold text-gray-900">
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+            <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">
               已标记帧 ({frames.length})
             </h3>
 
@@ -325,7 +325,7 @@ export default function Capture() {
                   <button
                     type="button"
                     onClick={() => void handleSeekToFrame(frame.ts_ms)}
-                    className="block w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50 text-left transition-shadow hover:shadow-md"
+                    className="block w-full overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-left transition-shadow hover:shadow-md"
                     title="回到该帧时间点"
                   >
                     <img
@@ -335,7 +335,7 @@ export default function Capture() {
                     />
                   </button>
                   <div className="mt-1 flex items-center justify-between px-1">
-                    <span className="text-xs text-gray-400">{formatTime(frame.ts_ms)}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">{formatTime(frame.ts_ms)}</span>
                     <button
                       onClick={() => handleDeleteFrame(index)}
                       disabled={isAutoCapturing}
@@ -352,27 +352,27 @@ export default function Capture() {
               <button
                 onClick={handleClearFrames}
                 disabled={isAutoCapturing}
-                className="mt-4 w-full rounded-lg border border-red-200 bg-white py-2 text-sm text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+                className="mt-4 w-full rounded-lg border border-red-200 dark:border-red-800 bg-white dark:bg-gray-800 py-2 text-sm text-red-600 dark:text-red-400 transition-colors hover:bg-red-50 disabled:opacity-50"
               >
                 清空所有帧
               </button>
             )}
 
             {/* 自动截帧控制 */}
-            <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50 p-3">
-              <div className="mb-2 text-xs font-semibold text-gray-600">自动截帧</div>
-              <div className="mb-3 grid grid-cols-2 rounded-lg border border-gray-200 bg-white p-0.5">
+            <div className="mt-4 rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 p-3">
+              <div className="mb-2 text-xs font-semibold text-gray-600 dark:text-gray-400">自动截帧</div>
+              <div className="mb-3 grid grid-cols-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-0.5">
                 <button
                   onClick={() => setCaptureMode('count')}
                   disabled={isAutoCapturing}
-                  className={`rounded-md px-2 py-1.5 text-xs transition-colors ${captureMode === 'count' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                  className={`rounded-md px-2 py-1.5 text-xs transition-colors ${captureMode === 'count' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
                 >
                   按帧数
                 </button>
                 <button
                   onClick={() => setCaptureMode('step')}
                   disabled={isAutoCapturing}
-                  className={`rounded-md px-2 py-1.5 text-xs transition-colors ${captureMode === 'step' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                  className={`rounded-md px-2 py-1.5 text-xs transition-colors ${captureMode === 'step' ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
                 >
                   按步长
                 </button>
@@ -380,7 +380,7 @@ export default function Capture() {
 
               {captureMode === 'count' ? (
                 <label className="block">
-                  <span className="mb-1 block text-xs text-gray-500">截取帧数</span>
+                  <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">截取帧数</span>
                   <input
                     type="number"
                     min="1"
@@ -388,12 +388,12 @@ export default function Capture() {
                     value={frameCount}
                     disabled={isAutoCapturing}
                     onChange={(e) => setFrameCount(Number(e.target.value) || 1)}
-                    className="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-gray-400"
+                    className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400"
                   />
                 </label>
               ) : (
                 <label className="block">
-                  <span className="mb-1 block text-xs text-gray-500">步长 (毫秒)</span>
+                  <span className="mb-1 block text-xs text-gray-500 dark:text-gray-400">步长 (毫秒)</span>
                   <input
                     type="number"
                     min="1"
@@ -403,27 +403,27 @@ export default function Capture() {
                       const v = Math.floor(Number(e.target.value));
                       setStepMs(Number.isFinite(v) && v > 0 ? v : 1);
                     }}
-                    className="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-900 outline-none focus:border-gray-400"
+                    className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-xs text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400"
                   />
                 </label>
               )}
 
               {isAutoCapturing && (
                 <div className="mt-3">
-                  <div className="h-1.5 overflow-hidden rounded-full bg-gray-200">
+                  <div className="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
                     <div
                       className="h-full rounded-full bg-gray-900 transition-all"
                       style={{ width: `${autoCaptureProgress}%` }}
                     />
                   </div>
-                  <div className="mt-1 text-center text-xs text-gray-500">正在截取 {autoCaptureProgress}%</div>
+                  <div className="mt-1 text-center text-xs text-gray-500 dark:text-gray-400">正在截取 {autoCaptureProgress}%</div>
                 </div>
               )}
 
               <button
                 onClick={() => void handleAutoCapture()}
                 disabled={!seededMeta || isAutoCapturing}
-                className="mt-3 w-full rounded-lg bg-gray-900 py-2 text-xs font-bold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-3 w-full rounded-lg bg-gray-900 dark:bg-gray-100 py-2 text-xs font-bold text-white dark:text-gray-900 transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isAutoCapturing ? '截取中...' : '自动截取关键帧'}
               </button>
@@ -432,7 +432,7 @@ export default function Capture() {
             <button
               onClick={handleContinue}
               disabled={isAutoCapturing}
-              className="mt-3 w-full rounded-lg bg-gray-900 py-2.5 text-sm font-bold text-white transition-colors hover:bg-gray-800 disabled:opacity-50"
+              className="mt-3 w-full rounded-lg bg-gray-900 dark:bg-gray-100 py-2.5 text-sm font-bold text-white dark:text-gray-900 transition-colors hover:bg-gray-800 disabled:opacity-50"
             >
               继续处理 &rarr;
             </button>
@@ -443,7 +443,7 @@ export default function Capture() {
       <canvas ref={canvasRef} className="hidden" />
 
       {error && (
-        <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+        <div className="mt-6 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 px-4 py-3 text-sm text-red-600 dark:text-red-400">
           {error}
         </div>
       )}

@@ -29,7 +29,7 @@ from .models import (
     RepackImageJobItemsRequest,
 )
 from . import store
-from .exporters import build_engine_export, build_image_export, build_image_gif
+from .exporters import build_engine_export, build_image_export, build_image_gif, build_video_gif
 from .media.extract import extract_frame_with_retry, get_video_info, save_frame_preview
 from .media.segment import detect_segments
 from .worker import (
@@ -54,7 +54,6 @@ app = FastAPI(title="Sprite Forge API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -486,7 +485,7 @@ async def delete_job(job_id: str):
 async def export_job(
     job_id: str,
     background_tasks: BackgroundTasks,
-    target: Literal["generic", "cocos", "unity", "godot", "frames"] = "generic",
+    target: Literal["generic", "cocos", "unity", "godot", "frames", "gif"] = "generic",
 ):
     job = store.get_job(job_id)
     if not job:
@@ -495,6 +494,19 @@ async def export_job(
     job_dir = store.get_job_dir(job_id)
     if not job_dir:
         raise HTTPException(404, "任务目录不存在")
+
+    if target == "gif":
+        gif_path = store.TMP_DIR / f"{job_id}_video.gif"
+        try:
+            build_video_gif(job_dir, gif_path)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        background_tasks.add_task(gif_path.unlink, missing_ok=True)
+        return FileResponse(
+            gif_path,
+            media_type="image/gif",
+            filename=f"spritesheet_{job_id}.gif",
+        )
 
     frames_dir = job_dir / "frames"
     if target == "frames" and not any(frames_dir.glob("*.png")):
@@ -508,7 +520,10 @@ async def export_job(
             raise HTTPException(400, "精灵表尚未生成")
 
     zip_path = store.TMP_DIR / f"{job_id}_{target}_export.zip"
-    build_engine_export(job_id, job_dir, zip_path, target)
+    try:
+        build_engine_export(job_id, job_dir, zip_path, target)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
     background_tasks.add_task(zip_path.unlink, missing_ok=True)
 
@@ -553,7 +568,10 @@ async def export_image_job(
             raise HTTPException(400, "切图结果尚未生成")
 
     zip_path = store.TMP_DIR / f"{job_id}_{target}_image_export.zip"
-    build_image_export(job_id, job_dir, zip_path, target)
+    try:
+        build_image_export(job_id, job_dir, zip_path, target)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     background_tasks.add_task(zip_path.unlink, missing_ok=True)
 
     return FileResponse(
@@ -612,7 +630,10 @@ async def job_websocket(websocket: WebSocket, job_id: str):
             pass
 
 
-app.mount("/files", StaticFiles(directory=str(store.DATA_DIR)), name="files")
+app.mount("/files/uploads", StaticFiles(directory=str(store.UPLOADS_DIR), check_dir=False), name="uploaded-files")
+app.mount("/files/images", StaticFiles(directory=str(store.IMAGES_DIR), check_dir=False), name="image-files")
+app.mount("/files/jobs", StaticFiles(directory=str(store.JOBS_DIR), check_dir=False), name="job-files")
+app.mount("/files/image_jobs", StaticFiles(directory=str(store.IMAGE_JOBS_DIR), check_dir=False), name="image-job-files")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@ import {
   uploadVideo,
   type VideoUploadResponse,
 } from '../api/client';
+import PageShell from '../components/PageShell';
+import useSortableList from '../hooks/useSortableList';
 import { formatTime } from '../utils/format';
 import { generateFrameTimestamps } from '../utils/timestamps';
 
@@ -53,13 +55,15 @@ export default function MultiVideoCompose() {
   const [processProgress, setProcessProgress] = useState(0);
   const [stage, setStage] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const dragIndexRef = useRef<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     return () => {
-      wsRef.current?.close();
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+        wsRef.current = null;
+      }
     };
   }, []);
 
@@ -197,28 +201,13 @@ export default function MultiVideoCompose() {
     });
   }, []);
 
-  const handleDragStart = useCallback((index: number) => {
-    dragIndexRef.current = index;
-  }, []);
-
-  const handleDragOver = useCallback((event: React.DragEvent, index: number) => {
-    event.preventDefault();
-    setDragOverIndex(index);
-  }, []);
-
-  const handleDrop = useCallback((dropIndex: number) => {
-    const fromIndex = dragIndexRef.current;
-    dragIndexRef.current = null;
-    setDragOverIndex(null);
-    if (fromIndex === null) return;
-
-    moveFrame(fromIndex, dropIndex);
-  }, [moveFrame]);
-
-  const handleDragEnd = useCallback(() => {
-    dragIndexRef.current = null;
-    setDragOverIndex(null);
-  }, []);
+  const {
+    dragOverIndex,
+    handleDragStart,
+    handleDragOver,
+    handleDrop,
+    handleDragEnd,
+  } = useSortableList(moveFrame);
 
   const handleDeleteFrame = useCallback((index: number) => {
     setFrames((current) => current.filter((_, frameIndex) => frameIndex !== index));
@@ -284,6 +273,7 @@ export default function MultiVideoCompose() {
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/jobs/${job_id}`);
       wsRef.current = ws;
+      let settled = false;
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -291,11 +281,13 @@ export default function MultiVideoCompose() {
         setStage(data.stage || '');
 
         if (data.status === 'done') {
+          settled = true;
           ws.close();
           navigate(`/result/${job_id}`, {
             state: { jobId: job_id },
           });
         } else if (data.status === 'failed') {
+          settled = true;
           ws.close();
           setError(data.error || '处理失败');
           setIsProcessing(false);
@@ -303,7 +295,14 @@ export default function MultiVideoCompose() {
       };
 
       ws.onerror = () => {
+        settled = true;
         setError('WebSocket 连接失败');
+        setIsProcessing(false);
+      };
+
+      ws.onclose = () => {
+        if (settled) return;
+        setError('连接断开，请重试');
         setIsProcessing(false);
       };
     } catch (err) {
@@ -331,66 +330,65 @@ export default function MultiVideoCompose() {
     : undefined;
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">多视频拼帧</h2>
-          <p className="mt-2 text-sm text-gray-500">把多个视频的关键帧编排成同一个精灵表。</p>
-        </div>
-        <button
-          onClick={() => void handleClearVideos()}
-          disabled={busy || videos.length === 0}
-          className="self-start rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
-        >
-          清空视频
-        </button>
-      </div>
-
+    <PageShell
+      title="多视频拼帧"
+      description="把多个视频的关键帧编排成同一个精灵表。"
+      align="center"
+    >
       {error && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
           {error}
         </div>
       )}
 
       <div className="mb-6 grid gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="rounded-xl border border-gray-200 p-6">
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-6">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h3 className="text-lg font-bold text-gray-900">视频素材</h3>
-            <label className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800">
-              选择视频
-              <input
-                type="file"
-                multiple
-                accept="video/mp4,video/webm"
-                className="hidden"
-                disabled={busy}
-                onChange={(event) => {
-                  void handleFiles(event.target.files);
-                  event.currentTarget.value = '';
-                }}
-              />
-            </label>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">视频素材</h3>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => void handleClearVideos()}
+                disabled={busy || videos.length === 0}
+                className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                清空视频
+              </button>
+              <label className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200 dark:hover:text-gray-900">
+                选择视频
+                <input
+                  type="file"
+                  multiple
+                  accept="video/mp4,video/webm"
+                  className="hidden"
+                  disabled={busy}
+                  onChange={(event) => {
+                    void handleFiles(event.target.files);
+                    event.currentTarget.value = '';
+                  }}
+                />
+              </label>
+            </div>
           </div>
 
           {isUploading && (
             <div className="mb-4">
-              <div className="mb-2 text-sm text-gray-500">上传中 {uploadProgress}%</div>
-              <div className="h-2 overflow-hidden rounded-full bg-gray-200">
-                <div className="h-full rounded-full bg-gray-900 transition-all" style={{ width: `${uploadProgress}%` }} />
+              <div className="mb-2 text-sm text-gray-500 dark:text-gray-400">上传中 {uploadProgress}%</div>
+              <div className="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                <div className="h-full rounded-full bg-gray-900 dark:bg-gray-100 transition-all" style={{ width: `${uploadProgress}%` }} />
               </div>
             </div>
           )}
 
           {videos.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-gray-300 py-12 text-center text-sm text-gray-400">
+            <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-600 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
               暂无视频
             </div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {videos.map((video, index) => (
-                <div key={video.video_id} className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                  <div className="mb-2 truncate text-sm font-medium text-gray-900">{video.filename}</div>
-                  <div className="text-xs text-gray-500">
+                <div key={video.video_id} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4">
+                  <div className="mb-2 truncate text-sm font-medium text-gray-900 dark:text-gray-100">{video.filename}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
                     #{index + 1} · {Math.round(video.duration_ms / 1000)} 秒 · {video.width}×{video.height}
                   </div>
                 </div>
@@ -399,9 +397,9 @@ export default function MultiVideoCompose() {
           )}
         </div>
 
-        <div className="rounded-xl border border-gray-200 p-6">
-          <h3 className="mb-4 text-lg font-bold text-gray-900">截帧设置</h3>
-          <label className="mb-1 block text-sm text-gray-500">每个视频截取帧数</label>
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">截帧设置</h3>
+          <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">每个视频截取帧数</label>
           <input
             type="number"
             min="1"
@@ -409,21 +407,21 @@ export default function MultiVideoCompose() {
             value={frameCount}
             disabled={busy}
             onChange={(event) => setFrameCount(parseInt(event.target.value) || 1)}
-            className="mb-4 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:opacity-50"
+            className="mb-4 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500 disabled:opacity-50"
           />
           <button
             onClick={() => void handleAutoCapture()}
             disabled={busy || videos.length === 0}
-            className="w-full rounded-lg bg-gray-900 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-lg bg-gray-900 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200 dark:hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
           >
             自动截取关键帧
           </button>
 
           {isCapturing && (
             <div className="mt-4">
-              <div className="mb-2 text-sm text-gray-500">截取中 {captureProgress}%</div>
-              <div className="h-2 overflow-hidden rounded-full bg-gray-200">
-                <div className="h-full rounded-full bg-gray-900 transition-all" style={{ width: `${captureProgress}%` }} />
+              <div className="mb-2 text-sm text-gray-500 dark:text-gray-400">截取中 {captureProgress}%</div>
+              <div className="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                <div className="h-full rounded-full bg-gray-900 dark:bg-gray-100 transition-all" style={{ width: `${captureProgress}%` }} />
               </div>
             </div>
           )}
@@ -432,10 +430,10 @@ export default function MultiVideoCompose() {
 
       {videos.length > 1 && frames.length > 0 && baseVideo && alignTargetVideo && (
         <div className="mb-6 grid gap-6 lg:grid-cols-[320px_1fr]">
-          <div className="rounded-xl border border-gray-200 p-6">
-            <h3 className="mb-4 text-lg font-bold text-gray-900">对齐校准</h3>
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+            <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">对齐校准</h3>
 
-            <label className="mb-1 block text-sm text-gray-500">基准视频</label>
+            <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">基准视频</label>
             <select
               value={baseVideo.video_id}
               disabled={busy}
@@ -447,7 +445,7 @@ export default function MultiVideoCompose() {
                   setAlignTargetVideoId(videos.find((video) => video.video_id !== nextBaseId)?.video_id ?? '');
                 }
               }}
-              className="mb-4 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:opacity-50"
+              className="mb-4 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500 disabled:opacity-50"
             >
               {videos.map((video) => (
                 <option key={video.video_id} value={video.video_id}>
@@ -456,12 +454,12 @@ export default function MultiVideoCompose() {
               ))}
             </select>
 
-            <label className="mb-1 block text-sm text-gray-500">调整视频</label>
+            <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">调整视频</label>
             <select
               value={alignTargetVideo.video_id}
               disabled={busy}
               onChange={(event) => setAlignTargetVideoId(event.target.value)}
-              className="mb-4 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:opacity-50"
+              className="mb-4 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500 disabled:opacity-50"
             >
               {targetVideos.map((video) => (
                 <option key={video.video_id} value={video.video_id}>
@@ -472,7 +470,7 @@ export default function MultiVideoCompose() {
 
             <div className="mb-4 grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-sm text-gray-500">X 偏移</label>
+                <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">X 偏移</label>
                 <input
                   type="number"
                   value={targetOffset.x}
@@ -482,11 +480,11 @@ export default function MultiVideoCompose() {
                     'x',
                     Number.parseInt(event.target.value, 10) || 0
                   )}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:opacity-50"
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500 disabled:opacity-50"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm text-gray-500">Y 偏移</label>
+                <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">Y 偏移</label>
                 <input
                   type="number"
                   value={targetOffset.y}
@@ -496,7 +494,7 @@ export default function MultiVideoCompose() {
                     'y',
                     Number.parseInt(event.target.value, 10) || 0
                   )}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:opacity-50"
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500 disabled:opacity-50"
                 />
               </div>
             </div>
@@ -508,7 +506,7 @@ export default function MultiVideoCompose() {
                 onClick={() => nudgeAlignmentOffset(alignTargetVideo.video_id, 0, -1)}
                 disabled={busy}
                 aria-label="上移"
-                className="rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 disabled:opacity-40"
+                className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"
               >
                 ↑
               </button>
@@ -518,7 +516,7 @@ export default function MultiVideoCompose() {
                 onClick={() => nudgeAlignmentOffset(alignTargetVideo.video_id, -1, 0)}
                 disabled={busy}
                 aria-label="左移"
-                className="rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 disabled:opacity-40"
+                className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"
               >
                 ←
               </button>
@@ -526,7 +524,7 @@ export default function MultiVideoCompose() {
                 type="button"
                 onClick={() => resetAlignmentOffset(alignTargetVideo.video_id)}
                 disabled={busy}
-                className="rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 disabled:opacity-40"
+                className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"
               >
                 归零
               </button>
@@ -535,7 +533,7 @@ export default function MultiVideoCompose() {
                 onClick={() => nudgeAlignmentOffset(alignTargetVideo.video_id, 1, 0)}
                 disabled={busy}
                 aria-label="右移"
-                className="rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 disabled:opacity-40"
+                className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"
               >
                 →
               </button>
@@ -545,7 +543,7 @@ export default function MultiVideoCompose() {
                 onClick={() => nudgeAlignmentOffset(alignTargetVideo.video_id, 0, 1)}
                 disabled={busy}
                 aria-label="下移"
-                className="rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 disabled:opacity-40"
+                className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"
               >
                 ↓
               </button>
@@ -553,14 +551,14 @@ export default function MultiVideoCompose() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-200 p-6">
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-6">
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="text-lg font-bold text-gray-900">叠加预览</h3>
-              <div className="text-sm text-gray-500">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">叠加预览</h3>
+              <div className="text-sm text-gray-500 dark:text-gray-400">
                 X {targetOffset.x}px · Y {targetOffset.y}px
               </div>
             </div>
-            <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg bg-gray-100">
+            <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800">
               {basePreviewFrame && (
                 <img
                   src={basePreviewFrame.thumb_url}
@@ -577,7 +575,7 @@ export default function MultiVideoCompose() {
                 />
               )}
             </div>
-            <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-500">
+            <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-500 dark:text-gray-400">
               <span>基准：{baseVideo.filename}</span>
               <span>调整：{alignTargetVideo.filename}</span>
             </div>
@@ -585,20 +583,20 @@ export default function MultiVideoCompose() {
         </div>
       )}
 
-      <div className="mb-6 rounded-xl border border-gray-200 p-6">
+      <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h3 className="text-lg font-bold text-gray-900">帧编排 ({frames.length} 帧)</h3>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">帧编排 ({frames.length} 帧)</h3>
           <button
             onClick={() => setFrames([])}
             disabled={busy || frames.length === 0}
-            className="self-start rounded-lg border border-red-200 bg-white px-4 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
+            className="self-start rounded-lg border border-red-200 dark:border-red-800 bg-white dark:bg-gray-800 px-4 py-2 text-sm text-red-600 dark:text-red-400 transition-colors hover:bg-red-50 dark:hover:bg-red-950 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
           >
             清空帧
           </button>
         </div>
 
         {frames.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-gray-300 py-16 text-center text-sm text-gray-400">
+          <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-600 py-16 text-center text-sm text-gray-400 dark:text-gray-500">
             暂无关键帧
           </div>
         ) : (
@@ -611,11 +609,11 @@ export default function MultiVideoCompose() {
                 onDragOver={(event) => handleDragOver(event, index)}
                 onDrop={() => handleDrop(index)}
                 onDragEnd={handleDragEnd}
-                className={`group relative overflow-hidden rounded-xl border bg-gray-50 transition-all ${
-                  dragOverIndex === index ? 'border-gray-900 ring-2 ring-gray-900' : 'border-gray-200'
+                className={`group relative overflow-hidden rounded-xl border bg-gray-50 dark:bg-gray-800 transition-all ${
+                  dragOverIndex === index ? 'border-gray-900 dark:border-gray-100 ring-2 ring-gray-900 dark:ring-gray-100' : 'border-gray-200 dark:border-gray-700'
                 } ${busy ? '' : 'cursor-grab active:cursor-grabbing'}`}
               >
-                <div className="flex aspect-video items-center justify-center bg-white">
+                <div className="flex aspect-video items-center justify-center bg-white dark:bg-gray-800">
                   <img
                     src={frame.thumb_url}
                     alt={`关键帧 ${index + 1}`}
@@ -623,20 +621,20 @@ export default function MultiVideoCompose() {
                   />
                 </div>
                 <div className="space-y-1 px-2 py-2">
-                  <div className="truncate text-xs font-medium text-gray-700">{frame.video_label}</div>
-                  <div className="text-xs text-gray-400">#{index + 1} · {formatTime(frame.ts_ms)}</div>
+                  <div className="truncate text-xs font-medium text-gray-700 dark:text-gray-300">{frame.video_label}</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">#{index + 1} · {formatTime(frame.ts_ms)}</div>
                   <div className="flex gap-1 pt-1">
                     <button
                       onClick={() => moveFrame(index, index - 1)}
                       disabled={busy || index === 0}
-                      className="flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 disabled:opacity-40"
+                      className="flex-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-gray-600 dark:text-gray-400 disabled:opacity-40"
                     >
                       上移
                     </button>
                     <button
                       onClick={() => moveFrame(index, index + 1)}
                       disabled={busy || index === frames.length - 1}
-                      className="flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 disabled:opacity-40"
+                      className="flex-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-gray-600 dark:text-gray-400 disabled:opacity-40"
                     >
                       下移
                     </button>
@@ -645,7 +643,8 @@ export default function MultiVideoCompose() {
                 <button
                   onClick={() => handleDeleteFrame(index)}
                   disabled={busy}
-                  className="absolute right-2 top-2 hidden h-6 w-6 items-center justify-center rounded-full bg-white text-xs text-red-500 shadow-sm group-hover:flex disabled:opacity-40"
+                  aria-label={`删除第 ${index + 1} 帧`}
+                  className="absolute right-2 top-2 hidden h-6 w-6 items-center justify-center rounded-full bg-white dark:bg-gray-800 text-xs text-red-500 shadow-sm group-hover:flex disabled:opacity-40"
                 >
                   &times;
                 </button>
@@ -656,22 +655,22 @@ export default function MultiVideoCompose() {
       </div>
 
       <div className="mb-6 grid gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-gray-200 p-6">
-          <h3 className="mb-4 text-lg font-bold text-gray-900">处理选项</h3>
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">处理选项</h3>
           <label className="mb-4 flex cursor-pointer items-center gap-3">
             <input
               type="checkbox"
               checked={removeBg}
               disabled={busy}
               onChange={(event) => setRemoveBg(event.target.checked)}
-              className="h-5 w-5 rounded border-gray-300"
+              className="h-5 w-5 rounded border-gray-300 dark:border-gray-600"
             />
-            <span className="text-base text-gray-700">去除背景</span>
+            <span className="text-base text-gray-700 dark:text-gray-300">去除背景</span>
           </label>
 
           {removeBg && (
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <div className="mb-3 text-sm font-medium text-gray-700">去背景模式</div>
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4">
+              <div className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">去背景模式</div>
               <div className="space-y-3">
                 <label className="flex cursor-pointer items-start gap-3">
                   <input
@@ -680,9 +679,9 @@ export default function MultiVideoCompose() {
                     checked={removeBgMode === 'standard'}
                     disabled={busy}
                     onChange={() => setRemoveBgMode('standard')}
-                    className="mt-0.5 h-4 w-4 border-gray-300"
+                    className="mt-0.5 h-4 w-4 border-gray-300 dark:border-gray-600"
                   />
-                  <span className="text-sm text-gray-600">标准：边缘更干净，适合普通角色和道具。</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">标准：边缘更干净，适合普通角色和道具。</span>
                 </label>
                 <label className="flex cursor-pointer items-start gap-3">
                   <input
@@ -691,9 +690,9 @@ export default function MultiVideoCompose() {
                     checked={removeBgMode === 'conservative'}
                     disabled={busy}
                     onChange={() => setRemoveBgMode('conservative')}
-                    className="mt-0.5 h-4 w-4 border-gray-300"
+                    className="mt-0.5 h-4 w-4 border-gray-300 dark:border-gray-600"
                   />
-                  <span className="text-sm text-gray-600">保守：优先保留弧光、残影和发光特效。</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">保守：优先保留弧光、残影和发光特效。</span>
                 </label>
                 <label className="flex cursor-pointer items-start gap-3">
                   <input
@@ -702,20 +701,20 @@ export default function MultiVideoCompose() {
                     checked={removeBgMode === 'white'}
                     disabled={busy}
                     onChange={() => setRemoveBgMode('white')}
-                    className="mt-0.5 h-4 w-4 border-gray-300"
+                    className="mt-0.5 h-4 w-4 border-gray-300 dark:border-gray-600"
                   />
-                  <span className="text-sm text-gray-600">单一背景：仅去除纯白或近纯白背景。</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">单一背景：仅去除纯白或近纯白背景。</span>
                 </label>
               </div>
             </div>
           )}
         </div>
 
-        <div className="rounded-xl border border-gray-200 p-6">
-          <h3 className="mb-4 text-lg font-bold text-gray-900">精灵表布局</h3>
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">精灵表布局</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1 block text-sm text-gray-500">列数</label>
+              <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">列数</label>
               <input
                 type="number"
                 min="1"
@@ -723,11 +722,11 @@ export default function MultiVideoCompose() {
                 value={layout.cols}
                 disabled={busy}
                 onChange={(event) => setLayout((current) => ({ ...current, cols: parseInt(event.target.value) || 4 }))}
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:opacity-50"
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500 disabled:opacity-50"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm text-gray-500">间距 (px)</label>
+              <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">间距 (px)</label>
               <input
                 type="number"
                 min="0"
@@ -735,7 +734,7 @@ export default function MultiVideoCompose() {
                 value={layout.padding}
                 disabled={busy}
                 onChange={(event) => setLayout((current) => ({ ...current, padding: parseInt(event.target.value) || 0 }))}
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:opacity-50"
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500 disabled:opacity-50"
               />
             </div>
           </div>
@@ -743,15 +742,15 @@ export default function MultiVideoCompose() {
       </div>
 
       {isProcessing && (
-        <div className="mb-6 rounded-xl border border-gray-200 p-6">
+        <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
           <div className="mb-3 flex items-center justify-between gap-4">
-            <div className="text-lg font-bold text-gray-900">正在处理...</div>
-            <div className="text-sm text-gray-500">{Math.round(processProgress * 100)}%</div>
+            <div className="text-lg font-bold text-gray-900 dark:text-gray-100">正在处理...</div>
+            <div className="text-sm text-gray-500 dark:text-gray-400">{Math.round(processProgress * 100)}%</div>
           </div>
-          <div className="h-3 overflow-hidden rounded-full bg-gray-200">
-            <div className="h-full rounded-full bg-gray-900 transition-all" style={{ width: `${Math.round(processProgress * 100)}%` }} />
+          <div className="h-3 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+            <div className="h-full rounded-full bg-gray-900 dark:bg-gray-100 transition-all" style={{ width: `${Math.round(processProgress * 100)}%` }} />
           </div>
-          <div className="mt-3 text-sm text-gray-500">{stageLabels[stage] || stage}</div>
+          <div className="mt-3 text-sm text-gray-500 dark:text-gray-400">{stageLabels[stage] || stage}</div>
         </div>
       )}
 
@@ -759,11 +758,11 @@ export default function MultiVideoCompose() {
         <button
           onClick={() => void handleStartProcess()}
           disabled={busy || frames.length === 0}
-          className="rounded-lg bg-gray-900 px-8 py-3 text-base font-bold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-gray-900 px-8 py-3 text-base font-bold text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200 dark:hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
         >
           生成精灵表
         </button>
       </div>
-    </div>
+    </PageShell>
   );
 }

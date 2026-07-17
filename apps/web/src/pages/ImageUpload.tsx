@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { uploadImage, type ImageUploadResponse } from '../api/client';
+import PageShell from '../components/PageShell';
 import {
   createImageWorkflowRouteState,
   createInitialImageWorkflowState,
@@ -113,18 +114,18 @@ export default function ImageUpload() {
   }, [uploadFiles]);
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col items-center">
-      <div className="mb-10 mt-8 text-center">
-        <h1 className="text-4xl font-bold tracking-tight text-gray-900">图片切图</h1>
-        <p className="mt-3 text-sm text-gray-500">上传白底素材图，自动识别图块并逐块去背景</p>
-      </div>
-
+    <PageShell
+      title="图片切图"
+      description="上传白底素材图，自动识别图块并逐块去背景。"
+      align="center"
+      contentClassName="flex w-full flex-col items-center"
+    >
       {isUploading ? (
-        <div className="w-full rounded-lg border border-gray-200 bg-white p-6">
-          <div className="mb-4 text-center text-lg font-medium text-gray-700">
+        <div className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
+          <div className="mb-4 text-center text-lg font-medium text-gray-700 dark:text-gray-300">
             上传中... ({uploadProgress.current}/{uploadProgress.total})
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
             <div
               className="h-full rounded-full bg-green-600 transition-all"
               style={{ width: `${uploadProgress.total > 0 ? (uploadProgress.current / uploadProgress.total) * 100 : 0}%` }}
@@ -135,8 +136,8 @@ export default function ImageUpload() {
         <div
           className={`flex w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-16 text-center transition-all ${
             isDragging
-              ? 'border-green-600 bg-green-50'
-              : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
+              ? 'border-green-600 dark:border-green-400 bg-green-50 dark:bg-green-950'
+              : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'
           }`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -152,18 +153,18 @@ export default function ImageUpload() {
             onChange={handleFileSelect}
           />
 
-          <svg className="mb-4 h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+          <svg className="mb-4 h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M3 7.5l4.5 4.5 3-3 4.5 4.5 3-3L21 13.5M3.75 6h16.5a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75H3.75a.75.75 0 0 1-.75-.75V6.75A.75.75 0 0 1 3.75 6Z" />
           </svg>
 
-          <div className="mb-2 text-base font-medium text-gray-700">拖放素材图到此处</div>
-          <div className="text-sm text-gray-400">或点击选择文件（支持多选）</div>
-          <div className="mt-3 text-xs text-gray-400">支持 PNG、JPG、WebP，适合白底分离素材</div>
+          <div className="mb-2 text-base font-medium text-gray-700 dark:text-gray-300">拖放素材图到此处</div>
+          <div className="text-sm text-gray-400 dark:text-gray-500">或点击选择文件（支持多选）</div>
+          <div className="mt-3 text-xs text-gray-400 dark:text-gray-500">支持 PNG、JPG、WebP，适合白底分离素材</div>
         </div>
       )}
 
       {error && (
-        <div className="mt-6 w-full rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+        <div className="mt-6 w-full rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 px-4 py-3 text-sm text-red-600 dark:text-red-400">
           {error}
         </div>
       )}
@@ -171,7 +172,7 @@ export default function ImageUpload() {
       {images.length > 0 && (
         <div className="mt-6 w-full">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-medium text-gray-700">已上传 {images.length} 张图片</h2>
+            <h2 className="text-sm font-medium text-gray-700 dark:text-gray-300">已上传 {images.length} 张图片</h2>
             <button
               type="button"
               onClick={() => document.getElementById('image-file-input')?.click()}
@@ -182,17 +183,17 @@ export default function ImageUpload() {
           </div>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-3">
             {images.map((img) => (
-              <div key={img.meta.image_id} className="group relative rounded border border-gray-200 bg-gray-50 p-2">
+              <div key={img.meta.image_id} className="group relative rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-2">
                 <div className="transparent-preview-bg flex aspect-square items-center justify-center overflow-hidden rounded">
                   <img src={img.previewUrl} alt={img.file.name} className="max-h-full max-w-full object-contain" />
                 </div>
-                <div className="mt-1 truncate text-xs text-gray-500" title={img.file.name}>
+                <div className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400" title={img.file.name}>
                   {img.file.name}
                 </div>
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleRemoveImage(img.meta.image_id); }}
-                  className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs text-red-500 shadow-sm opacity-0 transition-opacity group-hover:opacity-100"
+                  className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-white dark:bg-gray-800 text-xs text-red-500 shadow-sm opacity-0 transition-opacity group-hover:opacity-100"
                 >
                   &times;
                 </button>
@@ -204,13 +205,13 @@ export default function ImageUpload() {
             <button
               type="button"
               onClick={handleNext}
-              className="rounded-lg bg-gray-900 px-8 py-3 text-sm font-bold text-white transition-colors hover:bg-gray-800"
+              className="rounded-lg bg-gray-900 dark:bg-gray-100 dark:text-gray-900 px-8 py-3 text-sm font-bold text-white transition-colors hover:bg-gray-800 dark:hover:bg-gray-200 dark:hover:text-gray-900"
             >
               下一步 — 确认切图区域
             </button>
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

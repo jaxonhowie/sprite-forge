@@ -1,6 +1,7 @@
 import type { MouseEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { clearRuntimeData } from '../api/client';
+import PageShell from '../components/PageShell';
 import { clearAllImageWorkflowState } from '../utils/imageWorkflowState';
 import { clearAllWorkflowState } from '../utils/workflowState';
 
@@ -85,31 +86,29 @@ export default function Home() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <div className="mb-10 text-center">
-        <h1 className="text-4xl font-bold tracking-tight text-gray-900">Sprite Forge</h1>
-        <p className="mt-3 text-sm text-gray-500">选择一条工作流开始处理素材</p>
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-3">
+    <PageShell
+      title="Sprite Forge"
+      description="选择一条工作流开始处理素材"
+      align="center"
+      contentClassName="grid gap-6 md:grid-cols-3"
+    >
         {entryCards.map((card) => (
           <Link
             key={card.to}
             to={card.to}
             onClick={(event) => void handleEntryClick(event)}
-            className={`rounded-lg border ${card.border} bg-gradient-to-br ${card.accent} p-6 no-underline transition-transform hover:-translate-y-0.5 hover:border-gray-400`}
+            className={`rounded-lg border ${card.border} bg-gradient-to-br ${card.accent} p-6 no-underline transition-transform hover:-translate-y-0.5 hover:border-gray-400 dark:hover:border-gray-500`}
           >
             <div className="flex h-full flex-col">
-              <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded bg-gray-900 text-gray-100">
+              <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded bg-gray-900 text-gray-100 dark:bg-gray-100 dark:text-gray-900">
                 {card.icon === 'film' ? <FilmIcon /> : card.icon === 'stack' ? <StackIcon /> : <AlbumIcon />}
               </div>
-              <h2 className="text-xl font-semibold text-gray-900">{card.title}</h2>
-              <p className="mt-3 flex-1 text-sm leading-6 text-gray-600">{card.description}</p>
-              <div className="mt-6 text-sm font-medium text-gray-900">{card.cta} →</div>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{card.title}</h2>
+              <p className="mt-3 flex-1 text-sm leading-6 text-gray-600 dark:text-gray-400">{card.description}</p>
+              <div className="mt-6 text-sm font-medium text-gray-900 dark:text-gray-100">{card.cta} →</div>
             </div>
           </Link>
         ))}
-      </div>
-    </div>
+    </PageShell>
   );
 }

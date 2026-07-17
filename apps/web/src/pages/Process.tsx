@@ -261,13 +261,13 @@ export default function Process() {
   const firstThumbnail = timestamps.length > 0 ? thumbnails.get(timestamps[0]) : undefined;
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">处理设置</h2>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">处理设置</h2>
         <button
           onClick={handleReupload}
           disabled={isProcessing}
-          className="self-start rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
+          className="self-start rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
         >
           重新上传视频
         </button>
@@ -282,41 +282,41 @@ export default function Process() {
       <canvas ref={canvasRef} className="hidden" />
 
       {error && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+        <div className="mb-6 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 px-4 py-3 text-sm text-red-600 dark:text-red-400">
           {error}
         </div>
       )}
 
       {isProcessing ? (
-        <div className="rounded-xl border border-gray-200 p-8 text-center">
-          <div className="mb-6 text-xl font-bold text-gray-900">正在处理...</div>
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-8 text-center">
+          <div className="mb-6 text-xl font-bold text-gray-900 dark:text-gray-100">正在处理...</div>
 
-          <div className="mx-auto mb-4 h-3 max-w-md overflow-hidden rounded-full bg-gray-200">
+          <div className="mx-auto mb-4 h-3 max-w-md overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
             <div
-              className="h-full rounded-full bg-gray-900 transition-all"
+              className="h-full rounded-full bg-gray-900 dark:bg-gray-100 transition-all"
               style={{ width: `${Math.round(progress * 100)}%` }}
             />
           </div>
 
-          <div className="text-base text-gray-600">
+          <div className="text-base text-gray-600 dark:text-gray-400">
             {stageLabels[stage] || stage} - {Math.round(progress * 100)}%
           </div>
 
-          <div className="mt-4 text-sm text-gray-400">
+          <div className="mt-4 text-sm text-gray-400 dark:text-gray-500">
             处理中请勿关闭页面
           </div>
         </div>
       ) : loading ? (
-        <div className="py-20 text-center text-gray-400">
+        <div className="py-20 text-center text-gray-400 dark:text-gray-500">
           <div className="mb-4 flex justify-center">
-            <div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-200 border-t-gray-500" />
+            <div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-200 dark:border-gray-700 border-t-gray-500" />
           </div>
           <div className="text-lg">正在加载帧数据...</div>
         </div>
       ) : (
         <>
-          <div className="mb-6 rounded-xl border border-gray-200 p-6">
-            <h3 className="mb-4 text-lg font-bold text-gray-900">帧预览 ({timestamps.length} 帧)</h3>
+          <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+            <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">帧预览 ({timestamps.length} 帧)</h3>
             <div className="flex gap-2 overflow-x-auto pb-2">
               {timestamps.map((ts, i) => {
                 const thumb = thumbnails.get(ts);
@@ -325,10 +325,10 @@ export default function Process() {
                     key={ts}
                     src={thumb}
                     alt={`帧 ${i + 1}`}
-                    className="h-20 w-auto flex-shrink-0 rounded-lg border border-gray-200 object-contain"
+                    className="h-20 w-auto flex-shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 object-contain"
                   />
                 ) : (
-                  <div key={ts} className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-400">
+                  <div key={ts} className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-xs text-gray-400 dark:text-gray-500">
                     {Math.floor(ts / 1000)}s
                   </div>
                 );
@@ -336,8 +336,8 @@ export default function Process() {
             </div>
           </div>
 
-          <div className="mb-6 rounded-xl border border-gray-200 p-6">
-            <h3 className="mb-4 text-lg font-bold text-gray-900">处理选项</h3>
+          <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+            <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">处理选项</h3>
 
             <div className="space-y-4">
               <label className="flex cursor-pointer items-center gap-3">
@@ -345,14 +345,14 @@ export default function Process() {
                   type="checkbox"
                   checked={removeBg}
                   onChange={(e) => setRemoveBg(e.target.checked)}
-                  className="h-5 w-5 rounded border-gray-300"
+                  className="h-5 w-5 rounded border-gray-300 dark:border-gray-600"
                 />
-                <span className="text-base text-gray-700">去除背景</span>
+                <span className="text-base text-gray-700 dark:text-gray-300">去除背景</span>
               </label>
 
               {removeBg && (
-                <div className="ml-8 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                  <div className="mb-3 text-sm font-medium text-gray-700">去背景模式</div>
+                <div className="ml-8 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4">
+                  <div className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">去背景模式</div>
                   <div className="space-y-3">
                     <label className="flex cursor-pointer items-start gap-3">
                       <input
@@ -360,9 +360,9 @@ export default function Process() {
                         name="remove-bg-mode"
                         checked={removeBgMode === 'standard'}
                         onChange={() => setRemoveBgMode('standard')}
-                        className="mt-0.5 h-4 w-4 border-gray-300"
+                        className="mt-0.5 h-4 w-4 border-gray-300 dark:border-gray-600"
                       />
-                      <span className="text-sm text-gray-600">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">
                         标准：边缘更干净，适合普通角色和道具。
                       </span>
                     </label>
@@ -372,9 +372,9 @@ export default function Process() {
                         name="remove-bg-mode"
                         checked={removeBgMode === 'conservative'}
                         onChange={() => setRemoveBgMode('conservative')}
-                        className="mt-0.5 h-4 w-4 border-gray-300"
+                        className="mt-0.5 h-4 w-4 border-gray-300 dark:border-gray-600"
                       />
-                      <span className="text-sm text-gray-600">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">
                         保守：输出更宽松的透明边缘，优先保留弧光、残影和发光特效。
                       </span>
                     </label>
@@ -384,9 +384,9 @@ export default function Process() {
                         name="remove-bg-mode"
                         checked={removeBgMode === 'white'}
                         onChange={() => setRemoveBgMode('white')}
-                        className="mt-0.5 h-4 w-4 border-gray-300"
+                        className="mt-0.5 h-4 w-4 border-gray-300 dark:border-gray-600"
                       />
-                      <span className="text-sm text-gray-600">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">
                         单一背景：仅去除纯白或近纯白背景，尽量保留彩色发光和特效边缘。
                       </span>
                     </label>
@@ -399,14 +399,14 @@ export default function Process() {
                   type="checkbox"
                   checked={enableWatermark}
                   onChange={(e) => setEnableWatermark(e.target.checked)}
-                  className="h-5 w-5 rounded border-gray-300"
+                  className="h-5 w-5 rounded border-gray-300 dark:border-gray-600"
                 />
-                <span className="text-base text-gray-700">去除水印</span>
+                <span className="text-base text-gray-700 dark:text-gray-300">去除水印</span>
               </label>
 
               {enableWatermark && firstThumbnail && (
                 <div className="ml-8 mt-4">
-                  <p className="mb-2 text-sm text-gray-500">
+                  <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
                     在下方图片上框选水印区域
                   </p>
                   <BoxSelector
@@ -418,30 +418,30 @@ export default function Process() {
             </div>
           </div>
 
-          <div className="mb-6 rounded-xl border border-gray-200 p-6">
-            <h3 className="mb-4 text-lg font-bold text-gray-900">精灵表布局</h3>
+          <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+            <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">精灵表布局</h3>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="mb-1 block text-sm text-gray-500">列数</label>
+                <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">列数</label>
                 <input
                   type="number"
                   min="1"
                   max="32"
                   value={layout.cols}
                   onChange={(e) => { setColsTouched(true); setLayout(prev => ({ ...prev, cols: parseInt(e.target.value) || 8 })); }}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400"
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm text-gray-500">间距 (px)</label>
+                <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">间距 (px)</label>
                 <input
                   type="number"
                   min="0"
                   max="20"
                   value={layout.padding}
                   onChange={(e) => setLayout(prev => ({ ...prev, padding: parseInt(e.target.value) || 2 }))}
-                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400"
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500"
                 />
               </div>
             </div>
@@ -450,13 +450,13 @@ export default function Process() {
           <div className="flex justify-between">
             <button
               onClick={handleBack}
-              className="rounded-lg border border-gray-200 bg-white px-6 py-3 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-6 py-3 text-sm text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
             >
               &larr; 返回帧列表
             </button>
             <button
               onClick={handleStartProcess}
-              className="rounded-lg bg-gray-900 px-8 py-3 text-base font-bold text-white transition-colors hover:bg-gray-800"
+              className="rounded-lg bg-gray-900 dark:bg-gray-100 px-8 py-3 text-base font-bold text-white dark:text-gray-900 transition-colors hover:bg-gray-800 dark:hover:bg-gray-200 dark:hover:text-gray-900"
             >
               开始处理
             </button>

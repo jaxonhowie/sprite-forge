@@ -85,7 +85,7 @@ export default function BoxSelector({ imageUrl, onBoxChange }: BoxSelectorProps)
     <div className="relative">
       <div
         ref={containerRef}
-        className="relative inline-block cursor-crosshair overflow-hidden rounded-lg border border-gray-200"
+        className="relative inline-block cursor-crosshair overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -108,7 +108,7 @@ export default function BoxSelector({ imageUrl, onBoxChange }: BoxSelectorProps)
               height: box.h,
             }}
           >
-            <div className="absolute -top-6 left-0 rounded bg-white px-1.5 py-0.5 text-xs text-red-500 shadow-sm">
+            <div className="absolute -top-6 left-0 rounded bg-white px-1.5 py-0.5 text-xs text-red-500 shadow-sm dark:bg-gray-800">
               水印区域
             </div>
           </div>
@@ -117,7 +117,7 @@ export default function BoxSelector({ imageUrl, onBoxChange }: BoxSelectorProps)
 
       {box && (
         <div className="mt-2 flex items-center gap-4">
-          <span className="text-sm text-gray-400">
+          <span className="text-sm text-gray-400 dark:text-gray-500">
             区域: {Math.round(box.x)}, {Math.round(box.y)} - {Math.round(box.w)}&times;{Math.round(box.h)}
           </span>
           <button

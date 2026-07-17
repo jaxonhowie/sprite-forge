@@ -142,7 +142,7 @@ export interface ImageJobStatus {
   };
 }
 
-export type EngineExportTarget = 'generic' | 'cocos' | 'unity' | 'godot' | 'frames';
+export type EngineExportTarget = 'generic' | 'cocos' | 'unity' | 'godot' | 'frames' | 'gif';
 export type ImageExportTarget = 'generic' | 'items' | 'gif' | 'cocos' | 'unity' | 'godot';
 
 export interface WsJobUpdate {
@@ -154,6 +154,8 @@ export interface WsJobUpdate {
 }
 
 const BASE_URL = '';
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const EXPORT_DOWNLOAD_TIMEOUT_MS = 5 * 60_000;
 
 export class ApiError extends Error {
   status: number;
@@ -165,13 +167,68 @@ export class ApiError extends Error {
   }
 }
 
+function createTimeoutSignal(timeoutMs: number) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  return {
+    signal: controller.signal,
+    clear: () => window.clearTimeout(timeoutId),
+  };
+}
+
+export async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  options: RequestInit = {},
+  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
+): Promise<Response> {
+  const timeout = createTimeoutSignal(timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...options,
+      signal: timeout.signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('请求超时，请稍后重试');
+    }
+    throw err;
+  } finally {
+    timeout.clear();
+  }
+}
+
+export async function downloadBlobWithTimeout(
+  url: string,
+  timeoutMs = EXPORT_DOWNLOAD_TIMEOUT_MS
+): Promise<Blob> {
+  const timeout = createTimeoutSignal(timeoutMs);
+
+  try {
+    const response = await fetch(url, { signal: timeout.signal });
+    if (!response.ok) {
+      const error = await response.text().catch(() => response.statusText);
+      throw new ApiError(response.status, `导出失败 (${response.status}): ${error}`);
+    }
+    return await response.blob();
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('导出超时，请稍后重试或减少导出内容');
+    }
+    throw err;
+  } finally {
+    timeout.clear();
+  }
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${BASE_URL}${path}`;
   
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',

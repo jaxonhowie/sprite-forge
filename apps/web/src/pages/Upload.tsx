@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { uploadVideo } from '../api/client';
+import PageShell from '../components/PageShell';
 import {
   createInitialWorkflowState,
   createWorkflowRouteState,
@@ -73,31 +74,29 @@ export default function Upload() {
   }, [handleUpload]);
 
   return (
-    <div className="flex flex-col items-center">
-      <div className="mb-12 mt-12 text-center">
-        <h1 className="mb-4 text-5xl font-bold tracking-tight text-gray-900">
-          Sprite Forge
-        </h1>
-        <p className="text-lg text-gray-500">精灵制作器</p>
-      </div>
-
+    <PageShell
+      title="视频处理"
+      description="上传 MP4 或 WebM，自动截帧、去背景并导出精灵表。"
+      align="center"
+      contentClassName="flex w-full flex-col items-center"
+    >
       {isUploading ? (
-        <div className="w-full max-w-xl">
-          <div className="mb-4 text-center text-lg font-medium text-gray-700">上传中...</div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+        <div className="w-full">
+          <div className="mb-4 text-center text-lg font-medium text-gray-700 dark:text-gray-300">上传中...</div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
             <div
-              className="h-full rounded-full bg-gray-900 transition-all"
+              className="h-full rounded-full bg-gray-900 dark:bg-gray-100 dark:text-gray-900 transition-all"
               style={{ width: `${progress}%` }}
             />
           </div>
-          <div className="mt-2 text-center text-sm text-gray-500">{progress}%</div>
+          <div className="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">{progress}%</div>
         </div>
       ) : (
         <div
-          className={`flex w-full max-w-xl cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-16 text-center transition-all ${
+          className={`flex w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-16 text-center transition-all ${
             isDragging
-              ? 'border-gray-900 bg-gray-50'
-              : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
+              ? 'border-gray-900 dark:border-gray-100 bg-gray-50 dark:bg-gray-800'
+              : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800'
           }`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -113,21 +112,21 @@ export default function Upload() {
             disabled={isUploading}
           />
 
-          <svg className="mb-4 h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+          <svg className="mb-4 h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
           </svg>
 
-          <div className="mb-2 text-base font-medium text-gray-700">拖放视频文件到此处</div>
-          <div className="text-sm text-gray-400">或点击选择文件</div>
-          <div className="mt-3 text-xs text-gray-400">支持 MP4、WebM 格式，最大 500MB</div>
+          <div className="mb-2 text-base font-medium text-gray-700 dark:text-gray-300">拖放视频文件到此处</div>
+          <div className="text-sm text-gray-400 dark:text-gray-500">或点击选择文件</div>
+          <div className="mt-3 text-xs text-gray-400 dark:text-gray-500">支持 MP4、WebM 格式，最大 500MB</div>
         </div>
       )}
 
       {error && (
-        <div className="mt-6 w-full max-w-xl rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+        <div className="mt-6 w-full rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
           {error}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

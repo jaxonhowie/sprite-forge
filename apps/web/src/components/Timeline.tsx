@@ -89,7 +89,7 @@ export default function Timeline({ currentTime, duration, onSeek, markers = [] }
 
   return (
     <div className="relative select-none py-4">
-      <div className="mb-2 flex justify-between text-sm text-gray-400">
+      <div className="mb-2 flex justify-between text-sm text-gray-400 dark:text-gray-500">
         <span>{formatTimeShort(currentTime)}</span>
         <span>{formatTimeShort(duration)}</span>
       </div>
@@ -97,17 +97,17 @@ export default function Timeline({ currentTime, duration, onSeek, markers = [] }
       <div
         ref={trackRef}
         className={`relative h-2 rounded-full touch-none ${
-          canSeek ? 'cursor-pointer bg-gray-200' : 'cursor-not-allowed bg-gray-100'
+          canSeek ? 'cursor-pointer bg-gray-200 dark:bg-gray-700' : 'cursor-not-allowed bg-gray-100 dark:bg-gray-800'
         }`}
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
       >
         <div
-          className="absolute h-full rounded-full bg-gray-900"
+          className="absolute h-full rounded-full bg-gray-900 dark:bg-gray-300"
           style={{ width: `${progress}%` }}
         />
         <div
-          className="absolute top-1/2 h-4 w-4 rounded-full bg-gray-900 shadow-sm"
+          className="absolute top-1/2 h-4 w-4 rounded-full bg-gray-900 shadow-sm dark:bg-gray-300"
           style={{ left: `${progress}%`, transform: `translate(-50%, -50%)` }}
         />
         {normalizedMarkers.map((marker) => (
@@ -130,7 +130,7 @@ export default function Timeline({ currentTime, duration, onSeek, markers = [] }
         {Array.from({ length: 11 }).map((_, i) => (
           <div
             key={i}
-            className="h-1.5 w-0.5 rounded-full bg-gray-200"
+            className="h-1.5 w-0.5 rounded-full bg-gray-200 dark:bg-gray-700"
           />
         ))}
       </div>

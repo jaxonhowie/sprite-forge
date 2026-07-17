@@ -5,6 +5,7 @@ import {
   ApiError,
   clearRuntimeData,
   deleteVideo,
+  downloadBlobWithTimeout,
   getJobExportUrl,
   normalizeJobLighting,
   repackJobFrames,
@@ -231,14 +232,12 @@ export default function Result() {
       }
 
       const url = getJobExportUrl(resolvedJobId, target as EngineExportTarget);
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('导出失败');
-
-      const blob = await response.blob();
+      const ext = target === 'gif' ? 'gif' : 'zip';
+      const blob = await downloadBlobWithTimeout(url);
       const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = blobUrl;
-      a.download = `spritesheet_${resolvedJobId}_${target}.zip`;
+      a.download = `spritesheet_${resolvedJobId}_${target}.${ext}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -344,17 +343,17 @@ export default function Result() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-4xl py-20 text-center">
-        <div className="text-lg text-gray-500">加载中...</div>
+      <div className="py-20 text-center">
+        <div className="text-lg text-gray-500 dark:text-gray-400">加载中...</div>
       </div>
     );
   }
 
   if (missingJob) {
     return (
-      <div className="mx-auto max-w-4xl py-20 text-center">
+      <div className="py-20 text-center">
         <div className="mb-4 text-lg font-bold text-red-500">任务不存在或已失效</div>
-        <div className="mb-6 text-sm text-gray-500">请返回处理设置页重新创建任务。</div>
+        <div className="mb-6 text-sm text-gray-500 dark:text-gray-400">请返回处理设置页重新创建任务。</div>
         <button
           onClick={() => navigate('/', {
             state: createWorkflowRouteState({
@@ -362,7 +361,7 @@ export default function Result() {
               frameTimestamps: workflowState?.frameTimestamps,
             }),
           })}
-          className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800"
+          className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200 dark:hover:text-gray-900"
         >
           返回首页
         </button>
@@ -372,11 +371,11 @@ export default function Result() {
 
   if (error || !job) {
     return (
-      <div className="mx-auto max-w-4xl py-20 text-center">
+      <div className="py-20 text-center">
         <div className="mb-4 text-lg font-bold text-red-500">加载失败</div>
         <button
           onClick={handleNewProject}
-          className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800"
+          className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200 dark:hover:text-gray-900"
         >
           返回首页
         </button>
@@ -386,13 +385,13 @@ export default function Result() {
 
   if (job.status === 'failed') {
     return (
-      <div className="mx-auto max-w-4xl py-20 text-center">
+      <div className="py-20 text-center">
         <div className="mb-4 text-5xl">&cross;</div>
         <div className="mb-2 text-lg font-bold text-red-500">处理失败</div>
-        <div className="mb-8 text-gray-500">{job.error || '未知错误'}</div>
+        <div className="mb-8 text-gray-500 dark:text-gray-400">{job.error || '未知错误'}</div>
         <button
           onClick={handleNewProject}
-          className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800"
+          className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200 dark:hover:text-gray-900"
         >
           重新开始
         </button>
@@ -403,13 +402,13 @@ export default function Result() {
   if (job.status !== 'done') {
     if (isLightingInProgress) {
       return (
-        <div className="mx-auto max-w-4xl">
-          <h2 className="mb-8 text-center text-2xl font-bold text-gray-900">处理完成</h2>
+        <div className="mx-auto">
+          <h2 className="mb-8 text-center text-2xl font-bold text-gray-900 dark:text-gray-100">处理完成</h2>
 
-          <div className="mb-8 rounded-xl border border-gray-200 p-6">
-            <h3 className="mb-4 text-lg font-bold text-gray-900">精灵表预览</h3>
+          <div className="mb-8 rounded-xl border border-gray-200 p-6 dark:border-gray-700">
+            <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">精灵表预览</h3>
             {job.result?.spritesheet_url && (
-              <div className="transparent-preview-bg max-h-[60vh] overflow-auto rounded-lg border border-gray-100">
+              <div className="transparent-preview-bg max-h-[60vh] overflow-auto rounded-lg border border-gray-100 dark:border-gray-800">
                 <img
                   src={job.result.spritesheet_url}
                   alt="精灵表"
@@ -419,33 +418,33 @@ export default function Result() {
             )}
           </div>
 
-          <div className="mb-8 rounded-xl border border-gray-200 p-6">
+          <div className="mb-8 rounded-xl border border-gray-200 p-6 dark:border-gray-700">
             <div className="mb-4 flex items-center justify-between gap-4">
-              <h3 className="text-lg font-bold text-gray-900">统一灯光</h3>
-              <span className="text-sm text-gray-500">{Math.round(job.progress * 100)}%</span>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">统一灯光</h3>
+              <span className="text-sm text-gray-500 dark:text-gray-400">{Math.round(job.progress * 100)}%</span>
             </div>
-            <div className="mb-3 h-3 overflow-hidden rounded-full bg-gray-200">
+            <div className="mb-3 h-3 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
               <div
                 className="h-full rounded-full bg-gray-900 transition-all"
                 style={{ width: `${Math.round(job.progress * 100)}%` }}
               />
             </div>
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-gray-600 dark:text-gray-400">
               {stageLabels[job.stage] || job.stage} - 正在处理亮度和对比度
             </div>
           </div>
 
-          <div className="mb-8 rounded-xl border border-gray-200 p-6">
+          <div className="mb-8 rounded-xl border border-gray-200 p-6 dark:border-gray-700">
             <div className="mb-4 flex items-center justify-between gap-4">
-              <h3 className="text-lg font-bold text-gray-900">逐帧播放</h3>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">逐帧播放</h3>
               <button
                 disabled
-                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-400 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-400 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500"
               >
                 逐帧播放
               </button>
             </div>
-            <div className="transparent-preview-bg flex h-64 items-center justify-center rounded-lg border border-gray-100">
+            <div className="transparent-preview-bg flex h-64 items-center justify-center rounded-lg border border-gray-100 dark:border-gray-800">
               {playingFrameUrl ? (
                 <img
                   src={playingFrameUrl}
@@ -453,7 +452,7 @@ export default function Result() {
                   className="max-h-full max-w-full object-contain"
                 />
               ) : (
-                <div className="text-sm text-gray-400">暂无处理后帧，请重新开始处理生成逐帧预览</div>
+                <div className="text-sm text-gray-400 dark:text-gray-500">暂无处理后帧，请重新开始处理生成逐帧预览</div>
               )}
             </div>
           </div>
@@ -462,15 +461,15 @@ export default function Result() {
     }
 
     return (
-      <div className="mx-auto max-w-4xl py-20 text-center">
-        <div className="mb-6 text-xl font-bold text-gray-900">正在处理...</div>
-        <div className="mx-auto mb-4 h-3 max-w-md overflow-hidden rounded-full bg-gray-200">
+      <div className="py-20 text-center">
+        <div className="mb-6 text-xl font-bold text-gray-900 dark:text-gray-100">正在处理...</div>
+        <div className="mx-auto mb-4 h-3 max-w-md overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
           <div
             className="h-full rounded-full bg-gray-900 transition-all"
             style={{ width: `${Math.round(job.progress * 100)}%` }}
           />
         </div>
-        <div className="text-base text-gray-600">
+        <div className="text-base text-gray-600 dark:text-gray-400">
           {stageLabels[job.stage] || job.stage} - {Math.round(job.progress * 100)}%
         </div>
       </div>
@@ -478,24 +477,24 @@ export default function Result() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl">
-      <h2 className="mb-8 text-center text-2xl font-bold text-gray-900">处理完成</h2>
+    <div className="mx-auto">
+      <h2 className="mb-8 text-center text-2xl font-bold text-gray-900 dark:text-gray-100">处理完成</h2>
 
       {actionError && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
           {actionError}
         </div>
       )}
 
-      <div className="mb-8 rounded-xl border border-gray-200 p-6">
+      <div className="mb-8 rounded-xl border border-gray-200 p-6 dark:border-gray-700">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h3 className="text-lg font-bold text-gray-900">精灵表预览</h3>
-          <div className="text-sm text-gray-500">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">精灵表预览</h3>
+          <div className="text-sm text-gray-500 dark:text-gray-400">
             {processedFrameUrls.length} 帧 · {layoutCols} 列 · {layoutPadding}px 间距
           </div>
         </div>
         {processedFrameUrls.length > 0 ? (
-          <div className="rounded-lg border border-gray-100 bg-white p-3">
+          <div className="rounded-lg border border-gray-100 bg-white p-3 dark:border-gray-800 dark:bg-gray-800">
             <div
               className="grid overflow-x-auto"
               style={{
@@ -516,14 +515,14 @@ export default function Result() {
                     onDragOver={(event) => handleFrameDragOver(event, index)}
                     onDrop={() => handleFrameDrop(index)}
                     onDragEnd={handleFrameDragEnd}
-                    className={`group relative min-w-32 cursor-grab rounded border bg-gray-50 p-2 transition-all active:cursor-grabbing ${
+                    className={`group relative min-w-32 cursor-grab rounded border bg-gray-50 p-2 transition-all active:cursor-grabbing dark:bg-gray-800 ${
                       dragOverFrameIndex === index
-                        ? 'border-gray-900 ring-2 ring-gray-900'
-                        : 'border-gray-200'
+                        ? 'border-gray-900 ring-2 ring-gray-900 dark:border-gray-100 dark:ring-gray-100'
+                        : 'border-gray-200 dark:border-gray-700'
                     }`}
                   >
-                    <div className="mb-1 text-center text-xs text-gray-500">#{index + 1}</div>
-                    <div className="transparent-preview-bg flex aspect-square items-center justify-center overflow-hidden rounded border border-gray-200">
+                    <div className="mb-1 text-center text-xs text-gray-500 dark:text-gray-400">#{index + 1}</div>
+                    <div className="transparent-preview-bg flex aspect-square items-center justify-center overflow-hidden rounded border border-gray-200 dark:border-gray-700">
                       <img
                         src={frameUrl}
                         alt={`精灵帧 ${index + 1}`}
@@ -533,7 +532,7 @@ export default function Result() {
                       />
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-1">
-                      <label className="min-w-0 text-xs text-gray-500">
+                      <label className="min-w-0 text-xs text-gray-500 dark:text-gray-400">
                         X
                         <input
                           type="number"
@@ -544,10 +543,10 @@ export default function Result() {
                             'x',
                             Number.parseInt(event.target.value, 10) || 0
                           )}
-                          className="mt-1 w-full rounded border border-gray-200 bg-white px-1 py-1 text-center text-xs text-gray-700 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:opacity-40"
+                          className="mt-1 w-full rounded border border-gray-200 bg-white px-1 py-1 text-center text-xs text-gray-700 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:focus:border-gray-500 dark:focus:ring-gray-500"
                         />
                       </label>
-                      <label className="min-w-0 text-xs text-gray-500">
+                      <label className="min-w-0 text-xs text-gray-500 dark:text-gray-400">
                         Y
                         <input
                           type="number"
@@ -558,7 +557,7 @@ export default function Result() {
                             'y',
                             Number.parseInt(event.target.value, 10) || 0
                           )}
-                          className="mt-1 w-full rounded border border-gray-200 bg-white px-1 py-1 text-center text-xs text-gray-700 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:opacity-40"
+                          className="mt-1 w-full rounded border border-gray-200 bg-white px-1 py-1 text-center text-xs text-gray-700 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:focus:border-gray-500 dark:focus:ring-gray-500"
                         />
                       </label>
                     </div>
@@ -568,7 +567,7 @@ export default function Result() {
                         onClick={() => nudgeFrameOffset(frameUrl, -1, 0)}
                         disabled={isSyncingFrames}
                         aria-label={`左移第 ${index + 1} 帧`}
-                        className="rounded border border-gray-200 bg-white py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rounded border border-gray-200 bg-white py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
                       >
                         ←
                       </button>
@@ -577,7 +576,7 @@ export default function Result() {
                         onClick={() => nudgeFrameOffset(frameUrl, 0, -1)}
                         disabled={isSyncingFrames}
                         aria-label={`上移第 ${index + 1} 帧`}
-                        className="rounded border border-gray-200 bg-white py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rounded border border-gray-200 bg-white py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
                       >
                         ↑
                       </button>
@@ -585,7 +584,7 @@ export default function Result() {
                         type="button"
                         onClick={() => updateFrameOffset(frameUrl, { x: 0, y: 0 })}
                         disabled={isSyncingFrames || !hasFrameOffset}
-                        className="rounded border border-gray-200 bg-white py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rounded border border-gray-200 bg-white py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
                       >
                         归零
                       </button>
@@ -594,7 +593,7 @@ export default function Result() {
                         onClick={() => nudgeFrameOffset(frameUrl, 0, 1)}
                         disabled={isSyncingFrames}
                         aria-label={`下移第 ${index + 1} 帧`}
-                        className="rounded border border-gray-200 bg-white py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rounded border border-gray-200 bg-white py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
                       >
                         ↓
                       </button>
@@ -603,7 +602,7 @@ export default function Result() {
                         onClick={() => nudgeFrameOffset(frameUrl, 1, 0)}
                         disabled={isSyncingFrames}
                         aria-label={`右移第 ${index + 1} 帧`}
-                        className="rounded border border-gray-200 bg-white py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rounded border border-gray-200 bg-white py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
                       >
                         →
                       </button>
@@ -612,30 +611,31 @@ export default function Result() {
                       <button
                         onClick={() => moveFrame(index, index - 1)}
                         disabled={isSyncingFrames || index === 0}
-                        className="flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
                       >
                         上移
                       </button>
                       <button
                         onClick={() => moveFrame(index, index + 1)}
                         disabled={isSyncingFrames || index === processedFrameUrls.length - 1}
-                        className="flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
                       >
                         下移
                       </button>
                     </div>
-                    <button
-                      onClick={() => handleDeleteFrame(index)}
-                      disabled={isSyncingFrames || processedFrameUrls.length <= 1}
-                      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs text-red-500 shadow-sm opacity-0 transition-opacity group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
+	                    <button
+	                      onClick={() => handleDeleteFrame(index)}
+	                      disabled={isSyncingFrames || processedFrameUrls.length <= 1}
+	                      aria-label={`删除第 ${index + 1} 帧`}
+	                      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs text-red-500 shadow-sm opacity-0 transition-opacity group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-gray-800"
+	                    >
                       &times;
                     </button>
                   </div>
                 );
               })}
             </div>
-            <div className="mt-3 text-xs text-gray-400">
+            <div className="mt-3 text-xs text-gray-400 dark:text-gray-500">
               拖拽或使用上移、下移调整顺序；X/Y 只校准当前帧，导出前会自动按当前设置重新打包。
             </div>
           </div>
@@ -650,27 +650,27 @@ export default function Result() {
         ) : null}
       </div>
 
-      <div className="mb-8 rounded-xl border border-gray-200 p-6">
+      <div className="mb-8 rounded-xl border border-gray-200 p-6 dark:border-gray-700">
         <div className="mb-4 flex items-center justify-between gap-4">
-          <h3 className="text-lg font-bold text-gray-900">统一灯光</h3>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">统一灯光</h3>
           <button
             onClick={() => void handleNormalizeLighting()}
             disabled={!resolvedJobId || isSyncingFrames || processedFrameUrls.length === 0}
-            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-800"
           >
             {isSyncingFrames ? '同步中...' : '统一灯光'}
           </button>
         </div>
-        <p className="text-sm text-gray-500">对处理后关键帧统一亮度和对比度，减少首尾帧色差。</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">对处理后关键帧统一亮度和对比度，减少首尾帧色差。</p>
       </div>
 
-      <div className="mb-8 rounded-xl border border-gray-200 p-6">
+      <div className="mb-8 rounded-xl border border-gray-200 p-6 dark:border-gray-700">
         <div className="mb-4 flex items-center justify-between gap-4">
-          <h3 className="text-lg font-bold text-gray-900">逐帧播放</h3>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">逐帧播放</h3>
           <button
             onClick={() => setIsPlayingFrames((current) => !current)}
             disabled={!playingFrameUrl}
-            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-800"
           >
             {isPlayingFrames ? '暂停播放' : '逐帧播放'}
           </button>
@@ -685,7 +685,7 @@ export default function Result() {
               style={playingFrameTransform ? { transform: playingFrameTransform } : undefined}
             />
           ) : (
-            <div className="text-sm text-gray-400">暂无处理后帧，请重新开始处理生成逐帧预览</div>
+            <div className="text-sm text-gray-400 dark:text-gray-500">暂无处理后帧，请重新开始处理生成逐帧预览</div>
           )}
         </div>
       </div>
@@ -695,7 +695,7 @@ export default function Result() {
           <button
             onClick={() => setExportOpen(!exportOpen)}
             disabled={isSyncingFrames || processedFrameUrls.length === 0}
-            className="flex items-center gap-2 rounded-lg bg-gray-900 px-8 py-3 text-sm font-bold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-gray-900 px-8 py-3 text-sm font-bold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200 dark:hover:text-gray-900"
           >
             {isSyncingFrames ? '同步中...' : framesDirty ? '同步并导出' : '导出'}
             <svg className={`h-4 w-4 transition-transform ${exportOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -703,66 +703,76 @@ export default function Result() {
             </svg>
           </button>
           {exportOpen && (
-            <div className="absolute left-1/2 z-10 mt-2 w-56 -translate-x-1/2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+            <div className="absolute left-1/2 z-10 mt-2 w-56 -translate-x-1/2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800 dark:shadow-2xl dark:shadow-black/30">
               <button
                 onClick={() => void handleExport('png')}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
               >
                 <span className="text-base">🖼</span>
                 <div>
                   <div className="font-medium">下载 PNG</div>
-                  <div className="text-xs text-gray-400">仅精灵表图片</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">仅精灵表图片</div>
                 </div>
               </button>
               <button
                 onClick={() => void handleExport('generic')}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
               >
                 <span className="text-base">📦</span>
                 <div>
                   <div className="font-medium">下载 ZIP</div>
-                  <div className="text-xs text-gray-400">PNG + JSON 元数据</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">PNG + JSON 元数据</div>
                 </div>
               </button>
               <button
                 onClick={() => void handleExport('frames')}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
               >
                 <span className="text-base">🧩</span>
                 <div>
                   <div className="font-medium">逐帧 PNG ZIP</div>
-                  <div className="text-xs text-gray-400">每帧单独 PNG 文件</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">每帧单独 PNG 文件</div>
                 </div>
               </button>
-              <div className="border-t border-gray-100" />
+              <button
+                onClick={() => void handleExport('gif')}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                <span className="text-base">🎞</span>
+                <div>
+                  <div className="font-medium">导出 GIF</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">生成动画 GIF 动图</div>
+                </div>
+              </button>
+              <div className="border-t border-gray-100 dark:border-gray-800" />
               <button
                 onClick={() => void handleExport('godot')}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
               >
                 <span className="text-base">🎮</span>
                 <div>
                   <div className="font-medium">Godot 4</div>
-                  <div className="text-xs text-gray-400">SpriteFrames + AtlasTexture</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">SpriteFrames + AtlasTexture</div>
                 </div>
               </button>
               <button
                 onClick={() => void handleExport('unity')}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
               >
                 <span className="text-base">🎯</span>
                 <div>
                   <div className="font-medium">Unity</div>
-                  <div className="text-xs text-gray-400">Sprite Sheet + Importer</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">Sprite Sheet + Importer</div>
                 </div>
               </button>
               <button
                 onClick={() => void handleExport('cocos')}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
               >
                 <span className="text-base">🔧</span>
                 <div>
                   <div className="font-medium">Cocos Creator</div>
-                  <div className="text-xs text-gray-400">plist + animation.json</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">plist + animation.json</div>
                 </div>
               </button>
             </div>
@@ -770,7 +780,7 @@ export default function Result() {
         </div>
         <button
           onClick={handleNewProject}
-          className="rounded-lg border border-gray-200 bg-white px-8 py-3 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+          className="rounded-lg border border-gray-200 bg-white px-8 py-3 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-800"
         >
           新项目
         </button>
