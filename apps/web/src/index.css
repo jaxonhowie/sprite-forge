@@ -7,7 +7,7 @@
   line-height: 1.5;
   font-weight: 400;
   color: #111827;
-  background-color: #ffffff;
+  background-color: #f9fafb;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -17,8 +17,18 @@
 
 :root.dark {
   color: #f3f4f6;
-  background-color: #111827;
+  background-color: #030712;
   color-scheme: dark;
+}
+
+::selection {
+  background-color: #c7d2fe;
+  color: #1e1b4b;
+}
+
+:root.dark ::selection {
+  background-color: #3730a3;
+  color: #eef2ff;
 }
 
 body {
@@ -34,6 +44,34 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+}
+
+/* Subtle scrollbars that match the neutral theme */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+
+:root.dark * {
+  scrollbar-color: #4b5563 transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
+  border-radius: 4px;
+}
+
+:root.dark ::-webkit-scrollbar-thumb {
+  background-color: #4b5563;
+}
+
+::-webkit-scrollbar-track {
+  background-color: transparent;
 }
 
 .transparent-preview-bg {

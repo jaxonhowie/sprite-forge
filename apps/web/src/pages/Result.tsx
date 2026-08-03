@@ -14,6 +14,14 @@ import {
   type JobStatus,
 } from '../api/client';
 import { fetcher } from '../api/fetcher';
+import PageShell from '../components/PageShell';
+import Badge, { type BadgeTone } from '../components/ui/Badge';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
+import EmptyState from '../components/ui/EmptyState';
+import Icon from '../components/ui/Icon';
+import ProgressBar from '../components/ui/ProgressBar';
+import Steps from '../components/ui/Steps';
 import { videoStageLabels as stageLabels } from '../utils/stageLabels';
 import {
   clearWorkflow,
@@ -30,6 +38,24 @@ type JobResult = JobStatus;
 interface FrameSize {
   w: number;
   h: number;
+}
+
+const WORKFLOW_STEPS = ['上传视频', '截取帧', '确认帧', '处理设置', '导出结果'];
+
+const exportMenuItemClass =
+  'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700';
+
+function jobStatusBadge(status: string): { tone: BadgeTone; label: string } {
+  switch (status) {
+    case 'running':
+      return { tone: 'brand', label: '处理中' };
+    case 'done':
+      return { tone: 'green', label: '已完成' };
+    case 'failed':
+      return { tone: 'red', label: '已失败' };
+    default:
+      return { tone: 'gray', label: '排队中' };
+  }
 }
 
 export default function Result() {
@@ -343,158 +369,262 @@ export default function Result() {
 
   if (isLoading) {
     return (
-      <div className="py-20 text-center">
-        <div className="text-lg text-gray-500 dark:text-gray-400">加载中...</div>
-      </div>
+      <PageShell title="导出结果" description="正在加载任务数据">
+        <Steps steps={WORKFLOW_STEPS} current={4} className="mb-6" />
+        <div className="flex flex-col items-center py-20 text-center">
+          <Icon name="loader" size={32} className="animate-spin text-gray-400 dark:text-gray-500" />
+          <div className="mt-4 text-sm text-gray-500 dark:text-gray-400">加载中...</div>
+        </div>
+      </PageShell>
     );
   }
 
   if (missingJob) {
     return (
-      <div className="py-20 text-center">
-        <div className="mb-4 text-lg font-bold text-red-500">任务不存在或已失效</div>
-        <div className="mb-6 text-sm text-gray-500 dark:text-gray-400">请返回处理设置页重新创建任务。</div>
-        <button
-          onClick={() => navigate('/', {
-            state: createWorkflowRouteState({
-              videoMeta: workflowState?.videoMeta,
-              frameTimestamps: workflowState?.frameTimestamps,
-            }),
-          })}
-          className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200 dark:hover:text-gray-900"
-        >
-          返回首页
-        </button>
-      </div>
+      <PageShell title="导出结果">
+        <Steps steps={WORKFLOW_STEPS} current={4} className="mb-6" />
+        <EmptyState
+          icon="alert-circle"
+          title="任务不存在或已失效"
+          description="请返回处理设置页重新创建任务。"
+          action={
+            <Button
+              onClick={() => navigate('/', {
+                state: createWorkflowRouteState({
+                  videoMeta: workflowState?.videoMeta,
+                  frameTimestamps: workflowState?.frameTimestamps,
+                }),
+              })}
+            >
+              返回首页
+            </Button>
+          }
+        />
+      </PageShell>
     );
   }
 
   if (error || !job) {
     return (
-      <div className="py-20 text-center">
-        <div className="mb-4 text-lg font-bold text-red-500">加载失败</div>
-        <button
-          onClick={handleNewProject}
-          className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200 dark:hover:text-gray-900"
-        >
-          返回首页
-        </button>
-      </div>
+      <PageShell title="导出结果">
+        <Steps steps={WORKFLOW_STEPS} current={4} className="mb-6" />
+        <EmptyState
+          icon="alert-circle"
+          title="加载失败"
+          description="任务数据加载失败，请返回首页重新开始。"
+          action={<Button onClick={handleNewProject}>返回首页</Button>}
+        />
+      </PageShell>
     );
   }
 
   if (job.status === 'failed') {
     return (
-      <div className="py-20 text-center">
-        <div className="mb-4 text-5xl">&cross;</div>
-        <div className="mb-2 text-lg font-bold text-red-500">处理失败</div>
-        <div className="mb-8 text-gray-500 dark:text-gray-400">{job.error || '未知错误'}</div>
-        <button
-          onClick={handleNewProject}
-          className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200 dark:hover:text-gray-900"
-        >
-          重新开始
-        </button>
-      </div>
+      <PageShell title="导出结果">
+        <Steps steps={WORKFLOW_STEPS} current={4} className="mb-6" />
+        <EmptyState
+          icon="alert-circle"
+          title="处理失败"
+          description={job.error || '未知错误'}
+          action={<Button onClick={handleNewProject}>重新开始</Button>}
+        />
+      </PageShell>
     );
   }
 
   if (job.status !== 'done') {
     if (isLightingInProgress) {
       return (
-        <div className="mx-auto">
-          <h2 className="mb-8 text-center text-2xl font-bold text-gray-900 dark:text-gray-100">处理完成</h2>
+        <PageShell title="处理完成" description="精灵表已生成，正在进行光照归一化">
+          <Steps steps={WORKFLOW_STEPS} current={4} className="mb-6" />
 
-          <div className="mb-8 rounded-xl border border-gray-200 p-6 dark:border-gray-700">
-            <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">精灵表预览</h3>
-            {job.result?.spritesheet_url && (
-              <div className="transparent-preview-bg max-h-[60vh] overflow-auto rounded-lg border border-gray-100 dark:border-gray-800">
-                <img
-                  src={job.result.spritesheet_url}
-                  alt="精灵表"
-                  className="h-auto max-w-full"
-                />
-              </div>
-            )}
-          </div>
-
-          <div className="mb-8 rounded-xl border border-gray-200 p-6 dark:border-gray-700">
-            <div className="mb-4 flex items-center justify-between gap-4">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">统一灯光</h3>
-              <span className="text-sm text-gray-500 dark:text-gray-400">{Math.round(job.progress * 100)}%</span>
-            </div>
-            <div className="mb-3 h-3 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-              <div
-                className="h-full rounded-full bg-gray-900 transition-all"
-                style={{ width: `${Math.round(job.progress * 100)}%` }}
-              />
-            </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">
-              {stageLabels[job.stage] || job.stage} - 正在处理亮度和对比度
-            </div>
-          </div>
-
-          <div className="mb-8 rounded-xl border border-gray-200 p-6 dark:border-gray-700">
-            <div className="mb-4 flex items-center justify-between gap-4">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">逐帧播放</h3>
-              <button
-                disabled
-                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-400 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500"
-              >
-                逐帧播放
-              </button>
-            </div>
-            <div className="transparent-preview-bg flex h-64 items-center justify-center rounded-lg border border-gray-100 dark:border-gray-800">
-              {playingFrameUrl ? (
-                <img
-                  src={playingFrameUrl}
-                  alt="处理后逐帧播放预览"
-                  className="max-h-full max-w-full object-contain"
-                />
-              ) : (
-                <div className="text-sm text-gray-400 dark:text-gray-500">暂无处理后帧，请重新开始处理生成逐帧预览</div>
+          <div className="space-y-6">
+            <Card title="精灵表预览">
+              {job.result?.spritesheet_url && (
+                <div className="transparent-preview-bg max-h-[60vh] overflow-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                  <img
+                    src={job.result.spritesheet_url}
+                    alt="精灵表"
+                    className="h-auto max-w-full"
+                  />
+                </div>
               )}
-            </div>
+            </Card>
+
+            <Card title="统一灯光" actions={<Badge tone="brand" dot>处理中</Badge>}>
+              <div className="flex flex-col items-center py-2 text-center">
+                <div className="text-3xl font-semibold text-gray-900 dark:text-gray-100">
+                  {Math.round(job.progress * 100)}%
+                </div>
+                <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {stageLabels[job.stage] || job.stage} · 正在处理亮度和对比度
+                </div>
+                <div className="mt-5 w-full max-w-md">
+                  <ProgressBar value={job.progress} />
+                </div>
+              </div>
+            </Card>
+
+            <Card
+              title="逐帧播放"
+              actions={
+                <Button variant="secondary" size="sm" disabled>
+                  <Icon name="play" size={16} />
+                  逐帧播放
+                </Button>
+              }
+            >
+              <div className="transparent-preview-bg flex h-64 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700">
+                {playingFrameUrl ? (
+                  <img
+                    src={playingFrameUrl}
+                    alt="处理后逐帧播放预览"
+                    className="max-h-full max-w-full object-contain"
+                  />
+                ) : (
+                  <div className="text-sm text-gray-400 dark:text-gray-500">
+                    暂无处理后帧，请重新开始处理生成逐帧预览
+                  </div>
+                )}
+              </div>
+            </Card>
           </div>
-        </div>
+        </PageShell>
       );
     }
 
+    const statusMeta = jobStatusBadge(job.status);
+
     return (
-      <div className="py-20 text-center">
-        <div className="mb-6 text-xl font-bold text-gray-900 dark:text-gray-100">正在处理...</div>
-        <div className="mx-auto mb-4 h-3 max-w-md overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-          <div
-            className="h-full rounded-full bg-gray-900 transition-all"
-            style={{ width: `${Math.round(job.progress * 100)}%` }}
-          />
-        </div>
-        <div className="text-base text-gray-600 dark:text-gray-400">
-          {stageLabels[job.stage] || job.stage} - {Math.round(job.progress * 100)}%
-        </div>
-      </div>
+      <PageShell title="处理中" description="任务正在处理，完成后会自动展示结果">
+        <Steps steps={WORKFLOW_STEPS} current={4} className="mb-6" />
+        <Card>
+          <div className="flex flex-col items-center py-6 text-center">
+            <Badge tone={statusMeta.tone} dot>
+              {statusMeta.label}
+            </Badge>
+            <div className="mt-4 text-3xl font-semibold text-gray-900 dark:text-gray-100">
+              {Math.round(job.progress * 100)}%
+            </div>
+            <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {stageLabels[job.stage] || job.stage}
+            </div>
+            <div className="mt-5 w-full max-w-md">
+              <ProgressBar value={job.progress} />
+            </div>
+          </div>
+        </Card>
+      </PageShell>
     );
   }
 
+  const statusMeta = jobStatusBadge(job.status);
+
   return (
-    <div className="mx-auto">
-      <h2 className="mb-8 text-center text-2xl font-bold text-gray-900 dark:text-gray-100">处理完成</h2>
+    <PageShell
+      title="处理完成"
+      description="预览并微调精灵帧，然后导出为所需格式"
+      actions={
+        <>
+          <div ref={exportRef} className="relative">
+            <Button
+              variant="secondary"
+              onClick={() => setExportOpen(!exportOpen)}
+              disabled={isSyncingFrames || processedFrameUrls.length === 0}
+            >
+              {isSyncingFrames ? '同步中...' : framesDirty ? '同步并导出' : '导出'}
+              <Icon
+                name="chevron-down"
+                size={16}
+                className={`transition-transform ${exportOpen ? 'rotate-180' : ''}`}
+              />
+            </Button>
+            {exportOpen && (
+              <div className="absolute right-0 z-20 mt-2 w-56 animate-fade-in rounded-lg border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+                <button onClick={() => void handleExport('png')} className={exportMenuItemClass}>
+                  <Icon name="image" size={16} className="shrink-0 text-gray-400 dark:text-gray-500" />
+                  <span className="min-w-0">
+                    <span className="block font-medium">下载 PNG</span>
+                    <span className="block text-xs text-gray-400 dark:text-gray-500">仅精灵表图片</span>
+                  </span>
+                </button>
+                <button onClick={() => void handleExport('generic')} className={exportMenuItemClass}>
+                  <Icon name="download" size={16} className="shrink-0 text-gray-400 dark:text-gray-500" />
+                  <span className="min-w-0">
+                    <span className="block font-medium">下载 ZIP</span>
+                    <span className="block text-xs text-gray-400 dark:text-gray-500">PNG + JSON 元数据</span>
+                  </span>
+                </button>
+                <button onClick={() => void handleExport('frames')} className={exportMenuItemClass}>
+                  <Icon name="images" size={16} className="shrink-0 text-gray-400 dark:text-gray-500" />
+                  <span className="min-w-0">
+                    <span className="block font-medium">逐帧 PNG ZIP</span>
+                    <span className="block text-xs text-gray-400 dark:text-gray-500">每帧单独 PNG 文件</span>
+                  </span>
+                </button>
+                <button onClick={() => void handleExport('gif')} className={exportMenuItemClass}>
+                  <Icon name="film" size={16} className="shrink-0 text-gray-400 dark:text-gray-500" />
+                  <span className="min-w-0">
+                    <span className="block font-medium">导出 GIF</span>
+                    <span className="block text-xs text-gray-400 dark:text-gray-500">生成动画 GIF 动图</span>
+                  </span>
+                </button>
+                <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
+                <button onClick={() => void handleExport('godot')} className={exportMenuItemClass}>
+                  <Icon name="grid" size={16} className="shrink-0 text-gray-400 dark:text-gray-500" />
+                  <span className="min-w-0">
+                    <span className="block font-medium">Godot 4</span>
+                    <span className="block text-xs text-gray-400 dark:text-gray-500">SpriteFrames + AtlasTexture</span>
+                  </span>
+                </button>
+                <button onClick={() => void handleExport('unity')} className={exportMenuItemClass}>
+                  <Icon name="layers" size={16} className="shrink-0 text-gray-400 dark:text-gray-500" />
+                  <span className="min-w-0">
+                    <span className="block font-medium">Unity</span>
+                    <span className="block text-xs text-gray-400 dark:text-gray-500">Sprite Sheet + Importer</span>
+                  </span>
+                </button>
+                <button onClick={() => void handleExport('cocos')} className={exportMenuItemClass}>
+                  <Icon name="file" size={16} className="shrink-0 text-gray-400 dark:text-gray-500" />
+                  <span className="min-w-0">
+                    <span className="block font-medium">Cocos Creator</span>
+                    <span className="block text-xs text-gray-400 dark:text-gray-500">plist + animation.json</span>
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
+          <Button variant="secondary" onClick={handleNewProject}>
+            新项目
+          </Button>
+        </>
+      }
+    >
+      <Steps steps={WORKFLOW_STEPS} current={4} className="mb-6" />
 
       {actionError && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
-          {actionError}
+        <div className="mb-6 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-500/10 dark:text-red-300">
+          <Icon name="alert-circle" size={16} className="mt-0.5 shrink-0" />
+          <span>{actionError}</span>
         </div>
       )}
 
-      <div className="mb-8 rounded-xl border border-gray-200 p-6 dark:border-gray-700">
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">精灵表预览</h3>
-          <div className="text-sm text-gray-500 dark:text-gray-400">
-            {processedFrameUrls.length} 帧 · {layoutCols} 列 · {layoutPadding}px 间距
-          </div>
-        </div>
+      <div className="space-y-6">
+        <Card
+          title="精灵表预览"
+          actions={
+            <>
+              <Badge tone={statusMeta.tone} dot>
+                {statusMeta.label}
+              </Badge>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {processedFrameUrls.length} 帧 · {layoutCols} 列 · {layoutPadding}px 间距
+              </span>
+            </>
+          }
+        >
         {processedFrameUrls.length > 0 ? (
-          <div className="rounded-lg border border-gray-100 bg-white p-3 dark:border-gray-800 dark:bg-gray-800">
+          <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-800/60">
             <div
               className="grid overflow-x-auto"
               style={{
@@ -515,14 +645,14 @@ export default function Result() {
                     onDragOver={(event) => handleFrameDragOver(event, index)}
                     onDrop={() => handleFrameDrop(index)}
                     onDragEnd={handleFrameDragEnd}
-                    className={`group relative min-w-32 cursor-grab rounded border bg-gray-50 p-2 transition-all active:cursor-grabbing dark:bg-gray-800 ${
+                    className={`group relative min-w-32 cursor-grab rounded-lg border bg-white p-2 transition-all active:cursor-grabbing dark:bg-gray-800 ${
                       dragOverFrameIndex === index
-                        ? 'border-gray-900 ring-2 ring-gray-900 dark:border-gray-100 dark:ring-gray-100'
+                        ? 'border-brand-500 ring-2 ring-brand-500 dark:border-brand-400 dark:ring-brand-400'
                         : 'border-gray-200 dark:border-gray-700'
                     }`}
                   >
                     <div className="mb-1 text-center text-xs text-gray-500 dark:text-gray-400">#{index + 1}</div>
-                    <div className="transparent-preview-bg flex aspect-square items-center justify-center overflow-hidden rounded border border-gray-200 dark:border-gray-700">
+                    <div className="transparent-preview-bg flex aspect-square items-center justify-center overflow-hidden rounded-md border border-gray-200 dark:border-gray-700">
                       <img
                         src={frameUrl}
                         alt={`精灵帧 ${index + 1}`}
@@ -543,7 +673,7 @@ export default function Result() {
                             'x',
                             Number.parseInt(event.target.value, 10) || 0
                           )}
-                          className="mt-1 w-full rounded border border-gray-200 bg-white px-1 py-1 text-center text-xs text-gray-700 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:focus:border-gray-500 dark:focus:ring-gray-500"
+                          className="mt-1 w-full rounded-md border border-gray-300 bg-white px-1.5 py-1 text-center text-xs text-gray-700 shadow-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
                         />
                       </label>
                       <label className="min-w-0 text-xs text-gray-500 dark:text-gray-400">
@@ -557,7 +687,7 @@ export default function Result() {
                             'y',
                             Number.parseInt(event.target.value, 10) || 0
                           )}
-                          className="mt-1 w-full rounded border border-gray-200 bg-white px-1 py-1 text-center text-xs text-gray-700 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:focus:border-gray-500 dark:focus:ring-gray-500"
+                          className="mt-1 w-full rounded-md border border-gray-300 bg-white px-1.5 py-1 text-center text-xs text-gray-700 shadow-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 disabled:opacity-40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
                         />
                       </label>
                     </div>
@@ -567,7 +697,7 @@ export default function Result() {
                         onClick={() => nudgeFrameOffset(frameUrl, -1, 0)}
                         disabled={isSyncingFrames}
                         aria-label={`左移第 ${index + 1} 帧`}
-                        className="rounded border border-gray-200 bg-white py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
+                        className="flex h-7 items-center justify-center rounded-md border border-gray-300 bg-white text-xs text-gray-600 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
                       >
                         ←
                       </button>
@@ -576,7 +706,7 @@ export default function Result() {
                         onClick={() => nudgeFrameOffset(frameUrl, 0, -1)}
                         disabled={isSyncingFrames}
                         aria-label={`上移第 ${index + 1} 帧`}
-                        className="rounded border border-gray-200 bg-white py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
+                        className="flex h-7 items-center justify-center rounded-md border border-gray-300 bg-white text-xs text-gray-600 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
                       >
                         ↑
                       </button>
@@ -584,7 +714,7 @@ export default function Result() {
                         type="button"
                         onClick={() => updateFrameOffset(frameUrl, { x: 0, y: 0 })}
                         disabled={isSyncingFrames || !hasFrameOffset}
-                        className="rounded border border-gray-200 bg-white py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
+                        className="flex h-7 items-center justify-center rounded-md border border-gray-300 bg-white text-xs text-gray-600 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
                       >
                         归零
                       </button>
@@ -593,7 +723,7 @@ export default function Result() {
                         onClick={() => nudgeFrameOffset(frameUrl, 0, 1)}
                         disabled={isSyncingFrames}
                         aria-label={`下移第 ${index + 1} 帧`}
-                        className="rounded border border-gray-200 bg-white py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
+                        className="flex h-7 items-center justify-center rounded-md border border-gray-300 bg-white text-xs text-gray-600 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
                       >
                         ↓
                       </button>
@@ -602,35 +732,41 @@ export default function Result() {
                         onClick={() => nudgeFrameOffset(frameUrl, 1, 0)}
                         disabled={isSyncingFrames}
                         aria-label={`右移第 ${index + 1} 帧`}
-                        className="rounded border border-gray-200 bg-white py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
+                        className="flex h-7 items-center justify-center rounded-md border border-gray-300 bg-white text-xs text-gray-600 shadow-sm transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
                       >
                         →
                       </button>
                     </div>
                     <div className="mt-2 flex gap-1">
-                      <button
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="flex-1 !px-1"
                         onClick={() => moveFrame(index, index - 1)}
                         disabled={isSyncingFrames || index === 0}
-                        className="flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
                       >
                         上移
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="flex-1 !px-1"
                         onClick={() => moveFrame(index, index + 1)}
                         disabled={isSyncingFrames || index === processedFrameUrls.length - 1}
-                        className="flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
                       >
                         下移
-                      </button>
+                      </Button>
                     </div>
-	                    <button
-	                      onClick={() => handleDeleteFrame(index)}
-	                      disabled={isSyncingFrames || processedFrameUrls.length <= 1}
-	                      aria-label={`删除第 ${index + 1} 帧`}
-	                      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs text-red-500 shadow-sm opacity-0 transition-opacity group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-gray-800"
-	                    >
-                      &times;
-                    </button>
+                    <Button
+                      variant="dangerSoft"
+                      size="sm"
+                      onClick={() => handleDeleteFrame(index)}
+                      disabled={isSyncingFrames || processedFrameUrls.length <= 1}
+                      aria-label={`删除第 ${index + 1} 帧`}
+                      className="absolute right-1.5 top-1.5 w-8 !p-0 opacity-0 transition-opacity group-hover:opacity-100"
+                    >
+                      <Icon name="x" size={14} />
+                    </Button>
                   </div>
                 );
               })}
@@ -647,144 +783,64 @@ export default function Result() {
               className="h-auto max-w-full"
             />
           </div>
-        ) : null}
-      </div>
+        ) : (
+          <EmptyState
+            icon="image"
+            title="暂无精灵表"
+            description="任务结果中没有可预览的内容。"
+          />
+        )}
+        </Card>
 
-      <div className="mb-8 rounded-xl border border-gray-200 p-6 dark:border-gray-700">
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">统一灯光</h3>
-          <button
-            onClick={() => void handleNormalizeLighting()}
-            disabled={!resolvedJobId || isSyncingFrames || processedFrameUrls.length === 0}
-            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            {isSyncingFrames ? '同步中...' : '统一灯光'}
-          </button>
-        </div>
-        <p className="text-sm text-gray-500 dark:text-gray-400">对处理后关键帧统一亮度和对比度，减少首尾帧色差。</p>
-      </div>
-
-      <div className="mb-8 rounded-xl border border-gray-200 p-6 dark:border-gray-700">
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">逐帧播放</h3>
-          <button
-            onClick={() => setIsPlayingFrames((current) => !current)}
-            disabled={!playingFrameUrl}
-            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            {isPlayingFrames ? '暂停播放' : '逐帧播放'}
-          </button>
-        </div>
-        <div className="transparent-preview-bg flex h-64 items-center justify-center rounded-lg border border-gray-100">
-          {playingFrameUrl ? (
-            <img
-              src={playingFrameUrl}
-              alt="处理后逐帧播放预览"
-              className="max-h-full max-w-full object-contain transition-transform"
-              onLoad={(event) => handleFrameImageLoad(playingFrameUrl, event.currentTarget)}
-              style={playingFrameTransform ? { transform: playingFrameTransform } : undefined}
-            />
-          ) : (
-            <div className="text-sm text-gray-400 dark:text-gray-500">暂无处理后帧，请重新开始处理生成逐帧预览</div>
-          )}
-        </div>
-      </div>
-
-      <div className="flex flex-col justify-center gap-3 sm:flex-row">
-        <div ref={exportRef} className="relative">
-          <button
-            onClick={() => setExportOpen(!exportOpen)}
-            disabled={isSyncingFrames || processedFrameUrls.length === 0}
-            className="flex items-center gap-2 rounded-lg bg-gray-900 px-8 py-3 text-sm font-bold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200 dark:hover:text-gray-900"
-          >
-            {isSyncingFrames ? '同步中...' : framesDirty ? '同步并导出' : '导出'}
-            <svg className={`h-4 w-4 transition-transform ${exportOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-          {exportOpen && (
-            <div className="absolute left-1/2 z-10 mt-2 w-56 -translate-x-1/2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800 dark:shadow-2xl dark:shadow-black/30">
-              <button
-                onClick={() => void handleExport('png')}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                <span className="text-base">🖼</span>
-                <div>
-                  <div className="font-medium">下载 PNG</div>
-                  <div className="text-xs text-gray-400 dark:text-gray-500">仅精灵表图片</div>
-                </div>
-              </button>
-              <button
-                onClick={() => void handleExport('generic')}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                <span className="text-base">📦</span>
-                <div>
-                  <div className="font-medium">下载 ZIP</div>
-                  <div className="text-xs text-gray-400 dark:text-gray-500">PNG + JSON 元数据</div>
-                </div>
-              </button>
-              <button
-                onClick={() => void handleExport('frames')}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                <span className="text-base">🧩</span>
-                <div>
-                  <div className="font-medium">逐帧 PNG ZIP</div>
-                  <div className="text-xs text-gray-400 dark:text-gray-500">每帧单独 PNG 文件</div>
-                </div>
-              </button>
-              <button
-                onClick={() => void handleExport('gif')}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                <span className="text-base">🎞</span>
-                <div>
-                  <div className="font-medium">导出 GIF</div>
-                  <div className="text-xs text-gray-400 dark:text-gray-500">生成动画 GIF 动图</div>
-                </div>
-              </button>
-              <div className="border-t border-gray-100 dark:border-gray-800" />
-              <button
-                onClick={() => void handleExport('godot')}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                <span className="text-base">🎮</span>
-                <div>
-                  <div className="font-medium">Godot 4</div>
-                  <div className="text-xs text-gray-400 dark:text-gray-500">SpriteFrames + AtlasTexture</div>
-                </div>
-              </button>
-              <button
-                onClick={() => void handleExport('unity')}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                <span className="text-base">🎯</span>
-                <div>
-                  <div className="font-medium">Unity</div>
-                  <div className="text-xs text-gray-400 dark:text-gray-500">Sprite Sheet + Importer</div>
-                </div>
-              </button>
-              <button
-                onClick={() => void handleExport('cocos')}
-                className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                <span className="text-base">🔧</span>
-                <div>
-                  <div className="font-medium">Cocos Creator</div>
-                  <div className="text-xs text-gray-400 dark:text-gray-500">plist + animation.json</div>
-                </div>
-              </button>
-            </div>
-          )}
-        </div>
-        <button
-          onClick={handleNewProject}
-          className="rounded-lg border border-gray-200 bg-white px-8 py-3 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-800"
+        <Card
+          title="统一灯光"
+          actions={
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void handleNormalizeLighting()}
+              disabled={!resolvedJobId || isSyncingFrames || processedFrameUrls.length === 0}
+            >
+              {isSyncingFrames ? '同步中...' : '统一灯光'}
+            </Button>
+          }
         >
-          新项目
-        </button>
+          <p className="text-sm text-gray-500 dark:text-gray-400">对处理后关键帧统一亮度和对比度，减少首尾帧色差。</p>
+        </Card>
+
+        <Card title="逐帧播放">
+          <div className="transparent-preview-bg flex h-64 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700">
+            {playingFrameUrl ? (
+              <img
+                src={playingFrameUrl}
+                alt="处理后逐帧播放预览"
+                className="max-h-full max-w-full object-contain transition-transform"
+                onLoad={(event) => handleFrameImageLoad(playingFrameUrl, event.currentTarget)}
+                style={playingFrameTransform ? { transform: playingFrameTransform } : undefined}
+              />
+            ) : (
+              <div className="text-sm text-gray-400 dark:text-gray-500">暂无处理后帧，请重新开始处理生成逐帧预览</div>
+            )}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {playingFrameUrl
+                ? `第 ${Math.min(playingFrameIndex + 1, processedFrameUrls.length)} / ${processedFrameUrls.length} 帧`
+                : '暂无可播放帧'}
+            </span>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="ml-auto"
+              onClick={() => setIsPlayingFrames((current) => !current)}
+              disabled={!playingFrameUrl}
+            >
+              <Icon name={isPlayingFrames ? 'pause' : 'play'} size={16} />
+              {isPlayingFrames ? '暂停播放' : '逐帧播放'}
+            </Button>
+          </div>
+        </Card>
       </div>
-    </div>
+    </PageShell>
   );
 }

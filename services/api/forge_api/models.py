@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List
+from typing import Optional, List, Literal
 from enum import Enum
 from datetime import datetime
 
@@ -15,6 +15,7 @@ class RemoveBgMode(str, Enum):
     STANDARD = "standard"
     CONSERVATIVE = "conservative"
     WHITE = "white"
+    SOLID = "solid"
 
 
 class WatermarkBox(BaseModel):
@@ -97,6 +98,20 @@ class ImageUploadResponse(BaseModel):
     width: int
     height: int
     url: str
+
+
+class ImageProcessRequest(BaseModel):
+    operation: Literal["remove_bg", "remove_watermark"]
+    remove_bg_mode: RemoveBgMode = RemoveBgMode.STANDARD
+    watermark_box: Optional[WatermarkBox] = None
+
+
+class ImageProcessResponse(BaseModel):
+    image_id: str
+    operation: str
+    result_url: str
+    width: int
+    height: int
 
 
 class SegmentBox(BaseModel):

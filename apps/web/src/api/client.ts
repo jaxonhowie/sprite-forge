@@ -32,6 +32,28 @@ export interface ImageUploadResponse {
   url: string;
 }
 
+export type ImageProcessOperation = 'remove_bg' | 'remove_watermark';
+export type ImageProcessBgMode = 'standard' | 'conservative' | 'white' | 'solid';
+
+export interface ImageProcessRequest {
+  operation: ImageProcessOperation;
+  remove_bg_mode?: ImageProcessBgMode;
+  watermark_box?: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null;
+}
+
+export interface ImageProcessResponse {
+  image_id: string;
+  operation: ImageProcessOperation;
+  result_url: string;
+  width: number;
+  height: number;
+}
+
 export interface SegmentBox {
   x: number;
   y: number;
@@ -302,6 +324,16 @@ export async function createJob(jobData: CreateJobRequest): Promise<JobResponse>
 export async function detectImageSegments(imageId: string): Promise<DetectSegmentsResponse> {
   return request<DetectSegmentsResponse>(`/api/images/${imageId}/segments:detect`, {
     method: 'POST',
+  });
+}
+
+export async function processImage(
+  imageId: string,
+  data: ImageProcessRequest
+): Promise<ImageProcessResponse> {
+  return request<ImageProcessResponse>(`/api/images/${imageId}/process`, {
+    method: 'POST',
+    body: JSON.stringify(data),
   });
 }
 

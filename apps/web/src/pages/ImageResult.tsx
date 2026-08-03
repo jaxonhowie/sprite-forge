@@ -11,6 +11,14 @@ import {
   type ImageJobStatus,
 } from '../api/client';
 import { fetcher } from '../api/fetcher';
+import PageShell from '../components/PageShell';
+import Badge, { type BadgeTone } from '../components/ui/Badge';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
+import EmptyState from '../components/ui/EmptyState';
+import Icon from '../components/ui/Icon';
+import ProgressBar from '../components/ui/ProgressBar';
+import Steps from '../components/ui/Steps';
 import useSortableList from '../hooks/useSortableList';
 import { imageStageLabels as stageLabels } from '../utils/stageLabels';
 import {
@@ -22,6 +30,16 @@ import {
   type ImageWorkflowRouteState,
 } from '../utils/imageWorkflowState';
 import { clearAllWorkflowState } from '../utils/workflowState';
+
+const statusMeta: Record<string, { tone: BadgeTone; label: string }> = {
+  pending: { tone: 'gray', label: '排队中' },
+  running: { tone: 'brand', label: '处理中' },
+  done: { tone: 'green', label: '已完成' },
+  failed: { tone: 'red', label: '处理失败' },
+};
+
+const exportMenuItemClass =
+  'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700';
 
 export default function ImageResult() {
   const { jobId } = useParams<{ jobId: string }>();
@@ -201,75 +219,75 @@ export default function ImageResult() {
   } = useSortableList(moveItem);
 
   if (isLoading) {
-    return <div className="py-20 text-center text-gray-500 dark:text-gray-400">加载中...</div>;
+    return (
+      <PageShell title="切图结果" back={{ to: '/image', label: '返回上传' }}>
+        <div className="flex flex-col items-center justify-center gap-3 py-20 text-sm text-gray-500 dark:text-gray-400">
+          <Icon name="loader" size={24} className="animate-spin" />
+          加载中...
+        </div>
+      </PageShell>
+    );
   }
 
   if (error || !job) {
     return (
-      <div className="py-20 text-center">
-        <div className="mb-4 text-lg font-bold text-red-500">加载失败</div>
-        <button
-          type="button"
-          onClick={() => navigate('/image')}
-          className="rounded bg-gray-900 px-5 py-2 text-sm font-medium text-white dark:bg-gray-100 dark:text-gray-900"
-        >
-          返回切图入口
-        </button>
-      </div>
+      <PageShell title="切图结果" back={{ to: '/image', label: '返回上传' }}>
+        <EmptyState
+          icon="alert-circle"
+          title="加载失败"
+          description="任务不存在或已被清理，请返回提取要素入口重新上传图片。"
+          action={<Button onClick={() => navigate('/image')}>返回提取要素入口</Button>}
+        />
+      </PageShell>
     );
   }
 
   if (job.status === 'failed') {
     return (
-      <div className="py-20 text-center">
-        <div className="mb-2 text-lg font-bold text-red-500">处理失败</div>
-        <div className="mb-6 text-sm text-gray-500 dark:text-gray-400">{job.error || '未知错误'}</div>
-        <button
-          type="button"
-          onClick={handleRestart}
-          className="rounded bg-gray-900 px-5 py-2 text-sm font-medium text-white dark:bg-gray-100 dark:text-gray-900"
-        >
-          返回首页
-        </button>
-      </div>
+      <PageShell title="切图结果" back={{ to: '/image', label: '返回上传' }}>
+        <EmptyState
+          icon="alert-circle"
+          title="处理失败"
+          description={job.error || '未知错误'}
+          action={<Button onClick={handleRestart}>返回首页</Button>}
+        />
+      </PageShell>
     );
   }
 
   const progress = Math.round(job.progress * 100);
+  const statusInfo: { tone: BadgeTone; label: string } =
+    statusMeta[job.status] ?? { tone: 'gray', label: job.status };
 
   return (
-    <div className="mx-auto">
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">切图结果</h1>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">导出包含透明 PNG、spritesheet、metadata 的 ZIP。</p>
-        </div>
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={handleRestart}
-            className="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
+    <PageShell
+      title="切图结果"
+      description="导出包含透明 PNG、spritesheet、metadata 的 ZIP。"
+      back={{ to: '/image', label: '返回上传' }}
+      actions={(
+        <>
+          <Button variant="secondary" onClick={handleRestart}>
             返回首页
-          </button>
+          </Button>
           <div ref={exportRef} className="relative">
-            <button
-              type="button"
+            <Button
               onClick={() => setExportOpen(!exportOpen)}
               disabled={job.status !== 'done' || exporting || isRepacking}
-              className="flex items-center gap-2 rounded bg-green-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-500 disabled:cursor-not-allowed disabled:bg-green-300 dark:bg-green-500 dark:hover:bg-green-400 dark:disabled:bg-green-800"
+              loading={exporting}
             >
               {exporting ? '导出中...' : '导出'}
-              <svg className={`h-4 w-4 transition-transform ${exportOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
+              <Icon
+                name="chevron-down"
+                size={16}
+                className={`transition-transform ${exportOpen ? 'rotate-180' : ''}`}
+              />
+            </Button>
             {exportOpen && (
-              <div className="absolute right-0 z-10 mt-2 w-56 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800">
+              <div className="absolute right-0 z-20 mt-2 w-56 animate-fade-in rounded-lg border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
                 <button
                   type="button"
                   onClick={() => void handleExport('png')}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                  className={exportMenuItemClass}
                 >
                   <span className="text-base">🖼</span>
                   <div>
@@ -280,7 +298,7 @@ export default function ImageResult() {
                 <button
                   type="button"
                   onClick={() => void handleExport('generic')}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                  className={exportMenuItemClass}
                 >
                   <span className="text-base">📦</span>
                   <div>
@@ -291,7 +309,7 @@ export default function ImageResult() {
                 <button
                   type="button"
                   onClick={() => void handleExport('items')}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                  className={exportMenuItemClass}
                 >
                   <span className="text-base">🧩</span>
                   <div>
@@ -302,7 +320,7 @@ export default function ImageResult() {
                 <button
                   type="button"
                   onClick={() => void handleExport('gif')}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                  className={exportMenuItemClass}
                 >
                   <span className="text-base">🎞</span>
                   <div>
@@ -310,11 +328,11 @@ export default function ImageResult() {
                     <div className="text-xs text-gray-400 dark:text-gray-500">逐帧动画 GIF</div>
                   </div>
                 </button>
-                <div className="border-t border-gray-100 dark:border-gray-800" />
+                <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
                 <button
                   type="button"
                   onClick={() => void handleExport('godot')}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                  className={exportMenuItemClass}
                 >
                   <span className="text-base">🎮</span>
                   <div>
@@ -325,7 +343,7 @@ export default function ImageResult() {
                 <button
                   type="button"
                   onClick={() => void handleExport('unity')}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                  className={exportMenuItemClass}
                 >
                   <span className="text-base">🎯</span>
                   <div>
@@ -336,7 +354,7 @@ export default function ImageResult() {
                 <button
                   type="button"
                   onClick={() => void handleExport('cocos')}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                  className={exportMenuItemClass}
                 >
                   <span className="text-base">🔧</span>
                   <div>
@@ -347,34 +365,53 @@ export default function ImageResult() {
               </div>
             )}
           </div>
-        </div>
-      </div>
+        </>
+      )}
+      contentClassName="space-y-6"
+    >
+      <Steps steps={['上传图片', '确认切块', '导出结果']} current={2} />
 
       {actionError && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
-          {actionError}
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-500/10 dark:text-red-300">
+          <Icon name="alert-circle" size={16} className="mt-0.5 shrink-0" />
+          <span>{actionError}</span>
         </div>
       )}
 
       {job.status !== 'done' && (
-        <div className="mb-6 rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-          <div className="mb-3 flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
-            <span>{stageLabels[job.stage] || job.stage || '处理中'}</span>
-            <span>{progress}%</span>
+        <Card>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <div className="flex min-w-0 items-center gap-2">
+                <Badge tone={statusInfo.tone} dot>
+                  {statusInfo.label}
+                </Badge>
+                <span className="truncate text-gray-600 dark:text-gray-400">
+                  {stageLabels[job.stage] || job.stage || '处理中'}
+                </span>
+              </div>
+              <span className="shrink-0 text-gray-500 dark:text-gray-400">{progress}%</span>
+            </div>
+            <ProgressBar value={job.progress} tone="brand" />
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-gray-200">
-            <div className="h-full rounded-full bg-green-600 transition-all" style={{ width: `${progress}%` }} />
-          </div>
-        </div>
+        </Card>
       )}
 
-      <div className="mb-8 rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">切图预览</h2>
-          {isRepacking ? <span className="text-xs text-gray-500 dark:text-gray-400">正在更新结果...</span> : null}
-        </div>
-        <div className="mt-4 rounded-lg border border-gray-100 bg-white p-3 dark:border-gray-800 dark:bg-gray-800">
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
+      <Card
+        title="切图预览"
+        actions={(
+          <>
+            {isRepacking ? (
+              <span className="text-xs text-gray-500 dark:text-gray-400">正在更新结果...</span>
+            ) : null}
+            <Badge tone={statusInfo.tone} dot>
+              {statusInfo.label}
+            </Badge>
+          </>
+        )}
+      >
+        <div className="rounded-lg border border-gray-100 p-3 dark:border-gray-800">
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
             {arrangedItemUrls.map((itemUrl, index) => (
               <div
                 key={`${itemUrl}-${index}`}
@@ -383,9 +420,9 @@ export default function ImageResult() {
                 onDragOver={(event) => handleDragOver(event, index)}
                 onDrop={() => handleDrop(index)}
                 onDragEnd={handleDragEnd}
-                className={`group relative min-w-32 cursor-grab rounded border bg-gray-50 p-2 transition-all active:cursor-grabbing dark:bg-gray-800 ${
+                className={`group relative min-w-0 cursor-grab overflow-hidden rounded-lg border bg-white p-2 transition-all active:cursor-grabbing dark:bg-gray-800 ${
                   dragOverIndex === index
-                    ? 'border-gray-900 ring-2 ring-gray-900 dark:border-gray-100 dark:ring-gray-100'
+                    ? 'border-brand-500 ring-2 ring-brand-500 dark:border-brand-400 dark:ring-brand-400'
                     : 'border-gray-200 dark:border-gray-700'
                 }`}
               >
@@ -393,7 +430,7 @@ export default function ImageResult() {
                 <button
                   type="button"
                   onClick={() => setPreviewItem({ src: itemUrl, label: `切图 ${index + 1}` })}
-                  className="transparent-preview-bg flex aspect-square w-full items-center justify-center overflow-hidden rounded border border-gray-200 transition-shadow hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-900 dark:border-gray-700 dark:focus:ring-gray-100"
+                  className="transparent-preview-bg flex aspect-square w-full items-center justify-center overflow-hidden rounded-md border border-gray-200 transition-shadow hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700"
                   title="点击放大预览"
                 >
                   <img src={itemUrl} alt={`切图 ${index + 1}`} className="max-h-full max-w-full object-contain" />
@@ -403,27 +440,29 @@ export default function ImageResult() {
                   onClick={() => void handleDeleteItem(itemUrl)}
                   disabled={isRepacking || arrangedItemUrls.length <= 1}
                   aria-label={`删除第 ${index + 1} 个切图`}
-                  className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs text-red-500 shadow-sm opacity-0 transition-opacity group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-gray-800"
+                  className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-white text-red-500 opacity-0 shadow-sm transition-opacity hover:bg-red-50 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-gray-900 dark:text-red-400 dark:hover:bg-gray-800"
                 >
-                  &times;
+                  <Icon name="x" size={12} />
                 </button>
                 <div className="mt-2 flex gap-1">
-                  <button
-                    type="button"
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="flex-1"
                     onClick={() => moveItem(index, index - 1)}
                     disabled={isRepacking || index === 0}
-                    className="flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
                   >
                     上移
-                  </button>
-                  <button
-                    type="button"
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="flex-1"
                     onClick={() => moveItem(index, index + 1)}
                     disabled={isRepacking || index === arrangedItemUrls.length - 1}
-                    className="flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
                   >
                     下移
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
@@ -432,55 +471,54 @@ export default function ImageResult() {
             拖拽调整顺序，导出前会自动按当前顺序重新打包。
           </div>
         </div>
-      </div>
+      </Card>
 
       {arrangedItemUrls.length > 1 && (
-        <div className="mb-8 rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">逐帧播放</h2>
-          <div className="mt-4 flex flex-col items-center gap-4">
-            <div className="transparent-preview-bg flex h-64 w-full items-center justify-center rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+        <Card title="逐帧播放">
+          <div className="flex flex-col items-center gap-4">
+            <div className="transparent-preview-bg flex h-64 w-full items-center justify-center overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
               <img
                 src={arrangedItemUrls[playingItemIndex]}
                 alt={`切图 ${playingItemIndex + 1}`}
                 className="max-h-full max-w-full object-contain"
               />
             </div>
-            <div className="flex items-center gap-4">
-              <button
-                type="button"
-                onClick={() => setIsPlayingItems((prev) => !prev)}
-                className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200 dark:hover:text-gray-900"
-              >
-                {isPlayingItems ? '暂停播放' : '逐帧播放'}
-              </button>
-              <span className="text-sm text-gray-500 dark:text-gray-400">
+            <div className="flex w-full flex-wrap items-center gap-2">
+              <Badge tone="gray">
                 {playingItemIndex + 1} / {arrangedItemUrls.length}
-              </span>
+              </Badge>
+              <div className="ml-auto">
+                <Button onClick={() => setIsPlayingItems((prev) => !prev)}>
+                  <Icon name={isPlayingItems ? 'pause' : 'play'} size={16} />
+                  {isPlayingItems ? '暂停播放' : '逐帧播放'}
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
+        </Card>
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Spritesheet 预览</h2>
+        <Card title="Spritesheet 预览">
           {job.result?.spritesheet_url ? (
-            <div className="mt-4 overflow-auto rounded border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
+            <div className="transparent-preview-bg max-h-[420px] overflow-auto rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-800">
               <img src={job.result.spritesheet_url} alt="Spritesheet 预览" className="h-auto max-w-full" />
             </div>
           ) : (
-            <div className="mt-4 text-sm text-gray-500 dark:text-gray-400">正在生成 spritesheet...</div>
+            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+              <Icon name="loader" size={16} className="animate-spin" />
+              正在生成 spritesheet...
+            </div>
           )}
-        </div>
+        </Card>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">结果说明</h2>
-          <div className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-400">
+        <Card title="结果说明">
+          <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
             <div>图块数量: {arrangedItemUrls.length}</div>
             <div>导出内容: 透明 PNG、spritesheet、spritesheet.json、manifest.json</div>
             <div>排序规则: 自上而下，自左而右</div>
           </div>
-        </div>
+        </Card>
       </div>
 
       {previewItem && (
@@ -489,20 +527,16 @@ export default function ImageResult() {
           onClick={() => setPreviewItem(null)}
         >
           <div
-            className="max-h-full w-[min(90vw,960px)] rounded-2xl bg-white p-4 shadow-2xl dark:bg-gray-900"
+            className="max-h-full w-[min(90vw,960px)] rounded-xl bg-white p-4 shadow-lg dark:bg-gray-900"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between gap-4">
               <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{previewItem.label}</div>
-              <button
-                type="button"
-                onClick={() => setPreviewItem(null)}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-1 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
+              <Button variant="secondary" size="sm" onClick={() => setPreviewItem(null)}>
                 关闭
-              </button>
+              </Button>
             </div>
-            <div className="transparent-preview-bg flex h-[min(78vh,720px)] w-full items-center justify-center overflow-auto rounded-xl bg-gray-50 p-6 dark:bg-gray-800">
+            <div className="transparent-preview-bg flex h-[min(78vh,720px)] w-full items-center justify-center overflow-auto rounded-lg bg-gray-50 p-6 dark:bg-gray-800">
               <img
                 src={previewItem.src}
                 alt={previewItem.label}
@@ -512,6 +546,6 @@ export default function ImageResult() {
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

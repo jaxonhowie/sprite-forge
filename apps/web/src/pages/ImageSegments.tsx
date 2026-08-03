@@ -2,6 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ApiError, createImageJob, detectImageSegments } from '../api/client';
 import type { DetectedSegment, ImageUploadResponse } from '../api/client';
+import PageShell from '../components/PageShell';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
+import Icon from '../components/ui/Icon';
+import Input from '../components/ui/Input';
+import Steps from '../components/ui/Steps';
 import {
   createImageWorkflowRouteState,
   getImageWorkflowState,
@@ -21,7 +27,7 @@ function SegmentOverlay({
   height: number;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+    <div className="relative overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
       <img src={imageUrl} alt="切图预览" className="h-auto max-w-full" />
       <div className="pointer-events-none absolute inset-0">
         {segments.map((segment) => (
@@ -154,24 +160,36 @@ export default function ImageSegments() {
     return null;
   }
 
+  const showEmptyWarning =
+    !isDetecting && !error && Boolean(allSegments[currentImage.image_id]) && currentSegments.length === 0;
+
   return (
-    <div className="mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">确认切图结果</h1>
-        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-          系统会自动识别图块，再逐块识别主体并去除外部纯色背景后导出。
-          {imageMetas.length > 1 && ` 共 ${imageMetas.length} 张图片，已确认 ${Object.keys(allSegments).length} 张。`}
-        </p>
-      </div>
+    <PageShell
+      title="确认切块"
+      description={`系统会自动识别图块，再逐块识别主体并去除外部纯色背景后导出。${
+        imageMetas.length > 1 ? ` 共 ${imageMetas.length} 张图片，已确认 ${Object.keys(allSegments).length} 张。` : ''
+      }`}
+      back={{ to: '/image', label: '返回上传' }}
+      contentClassName="space-y-6"
+    >
+      <Steps steps={['上传图片', '确认切块', '导出结果']} current={1} />
 
       {error && (
-        <div className="mb-6 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 px-4 py-3 text-sm text-red-600 dark:text-red-400">
-          {error}
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-500/10 dark:text-red-300">
+          <Icon name="alert-circle" size={16} className="mt-0.5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {showEmptyWarning && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-700 dark:border-amber-900/60 dark:bg-amber-500/10 dark:text-amber-300">
+          <Icon name="alert-triangle" size={16} className="mt-0.5 shrink-0" />
+          <span>当前图片未检测到图块，可返回上一步重新上传素材图。</span>
         </div>
       )}
 
       {imageMetas.length > 1 && (
-        <div className="mb-6 flex items-center gap-2 overflow-x-auto pb-2">
+        <div className="flex items-center gap-2 overflow-x-auto pb-2">
           {imageMetas.map((img, index) => {
             const confirmed = (allSegments[img.image_id]?.length ?? 0) > 0;
             return (
@@ -179,12 +197,12 @@ export default function ImageSegments() {
                 key={img.image_id}
                 type="button"
                 onClick={() => setCurrentIndex(index)}
-                className={`flex h-10 min-w-10 items-center justify-center rounded-full border text-sm font-medium transition ${
+                className={`flex h-9 min-w-9 items-center justify-center rounded-md border px-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
                   index === currentIndex
-                    ? 'border-gray-900 bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900'
+                    ? 'border-brand-600 bg-brand-600 text-white dark:border-brand-500 dark:bg-brand-500'
                     : confirmed
-                      ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-300'
-                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                      ? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100 dark:border-green-800 dark:bg-green-500/10 dark:text-green-400 dark:hover:bg-green-500/20'
+                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
                 }`}
               >
                 {index + 1}
@@ -195,9 +213,12 @@ export default function ImageSegments() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+        <Card title="切块预览" bodyClassName="p-4">
           {isDetecting ? (
-            <div className="flex min-h-[320px] items-center justify-center text-sm text-gray-500 dark:text-gray-400">正在自动识别图块...</div>
+            <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+              <Icon name="loader" size={22} className="animate-spin" />
+              正在自动识别图块...
+            </div>
           ) : (
             <SegmentOverlay
               imageUrl={currentImage.url}
@@ -206,12 +227,11 @@ export default function ImageSegments() {
               height={currentImage.height}
             />
           )}
-        </div>
+        </Card>
 
-        <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">处理设置</h2>
-          <div className="mt-4 space-y-4">
-            <div className="rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 text-sm text-gray-600 dark:text-gray-400">
+        <Card title="处理设置">
+          <div className="space-y-4">
+            <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 text-xs leading-5 text-gray-600 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-400">
               {imageMetas.length > 1 && <div>当前: 第 {currentIndex + 1} / {imageMetas.length} 张</div>}
               <div>源图尺寸: {currentImage.width} × {currentImage.height}</div>
               <div className="mt-1">识别图块: {currentSegments.length} 个</div>
@@ -219,48 +239,54 @@ export default function ImageSegments() {
               {totalItems > 0 && <div className="mt-1 font-medium">合并总计: {totalItems} 个图块</div>}
             </div>
 
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">精灵表列数</span>
-              <input
+            <div>
+              <label htmlFor="segments-cols" className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                精灵表列数
+              </label>
+              <Input
+                id="segments-cols"
                 type="number"
                 min={1}
                 max={32}
                 value={cols}
                 onChange={(e) => setCols(Number(e.target.value))}
-                className="w-full rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm outline-none transition focus:border-blue-500 dark:focus:border-blue-400"
               />
-            </label>
+            </div>
 
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">图块间距</span>
-              <input
+            <div>
+              <label htmlFor="segments-padding" className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                图块间距
+              </label>
+              <Input
+                id="segments-padding"
                 type="number"
                 min={0}
                 max={20}
                 value={padding}
                 onChange={(e) => setPadding(Number(e.target.value))}
-                className="w-full rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm outline-none transition focus:border-blue-500 dark:focus:border-blue-400"
               />
-            </label>
+            </div>
 
-            <button
-              type="button"
-              onClick={() => navigate('/image')}
-              className="w-full rounded border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 transition hover:bg-gray-50 dark:hover:bg-gray-800"
-            >
-              重新上传
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleStart()}
-              disabled={isDetecting || isSubmitting || !allConfirmed}
-              className="w-full rounded bg-green-600 dark:bg-green-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-500 disabled:cursor-not-allowed disabled:bg-green-300"
-            >
-              {isSubmitting ? '正在创建任务...' : allConfirmed ? '开始处理' : '请确认所有图片'}
-            </button>
+            <div className="space-y-2 pt-1">
+              <Button
+                variant="secondary"
+                className="w-full"
+                onClick={() => navigate('/image')}
+              >
+                重新上传
+              </Button>
+              <Button
+                className="w-full"
+                loading={isSubmitting}
+                disabled={isDetecting || isSubmitting || !allConfirmed}
+                onClick={() => void handleStart()}
+              >
+                {isSubmitting ? '正在创建任务...' : allConfirmed ? '开始处理' : '请确认所有图片'}
+              </Button>
+            </div>
           </div>
-        </div>
+        </Card>
       </div>
-    </div>
+    </PageShell>
   );
 }

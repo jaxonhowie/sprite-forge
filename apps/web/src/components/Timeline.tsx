@@ -89,27 +89,33 @@ export default function Timeline({ currentTime, duration, onSeek, markers = [] }
 
   return (
     <div className="relative select-none py-4">
-      <div className="mb-2 flex justify-between text-sm text-gray-400 dark:text-gray-500">
+      <div className="mb-2 flex justify-between text-xs text-gray-400 dark:text-gray-500">
         <span>{formatTimeShort(currentTime)}</span>
         <span>{formatTimeShort(duration)}</span>
       </div>
 
       <div
         ref={trackRef}
-        className={`relative h-2 rounded-full touch-none ${
+        className={`relative h-1.5 rounded-full touch-none ${
           canSeek ? 'cursor-pointer bg-gray-200 dark:bg-gray-700' : 'cursor-not-allowed bg-gray-100 dark:bg-gray-800'
         }`}
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
       >
         <div
-          className="absolute h-full rounded-full bg-gray-900 dark:bg-gray-300"
+          className="absolute h-full rounded-full bg-brand-600 dark:bg-brand-500"
           style={{ width: `${progress}%` }}
         />
         <div
-          className="absolute top-1/2 h-4 w-4 rounded-full bg-gray-900 shadow-sm dark:bg-gray-300"
-          style={{ left: `${progress}%`, transform: `translate(-50%, -50%)` }}
-        />
+          className="group/handle absolute top-1/2 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center"
+          style={{ left: `${progress}%` }}
+        >
+          <div
+            className={`h-4 w-4 rounded-full bg-brand-600 shadow-sm ring-2 ring-white transition-transform dark:bg-brand-500 dark:ring-gray-900 ${
+              isDragging ? 'scale-125' : 'group-hover/handle:scale-110'
+            }`}
+          />
+        </div>
         {normalizedMarkers.map((marker) => (
           <button
             key={marker.id}
@@ -120,7 +126,7 @@ export default function Timeline({ currentTime, duration, onSeek, markers = [] }
               e.stopPropagation();
               onSeek(marker.timeMs);
             }}
-            className="absolute top-1/2 h-3 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-yellow-400 shadow-sm"
+            className="absolute top-1/2 h-3 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-500 shadow-sm transition-transform hover:scale-125 dark:bg-brand-400"
             style={{ left: `${marker.left}%` }}
           />
         ))}

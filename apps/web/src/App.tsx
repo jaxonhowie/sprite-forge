@@ -9,6 +9,7 @@ import Result from './pages/Result';
 import ImageUpload from './pages/ImageUpload';
 import ImageSegments from './pages/ImageSegments';
 import ImageResult from './pages/ImageResult';
+import ImageTools from './pages/ImageTools';
 import MultiVideoCompose from './pages/MultiVideoCompose';
 
 function App() {
@@ -24,6 +25,7 @@ function App() {
         <Route path="/image" element={<ImageUpload />} />
         <Route path="/image/segments" element={<ImageSegments />} />
         <Route path="/image/result/:jobId" element={<ImageResult />} />
+        <Route path="/image-tools" element={<ImageTools />} />
         <Route path="/multi-video" element={<MultiVideoCompose />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

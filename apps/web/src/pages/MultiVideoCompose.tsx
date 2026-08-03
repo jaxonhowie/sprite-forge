@@ -8,8 +8,17 @@ import {
   type VideoUploadResponse,
 } from '../api/client';
 import PageShell from '../components/PageShell';
+import Badge from '../components/ui/Badge';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
+import EmptyState from '../components/ui/EmptyState';
+import Icon from '../components/ui/Icon';
+import Input from '../components/ui/Input';
+import ProgressBar from '../components/ui/ProgressBar';
+import Select from '../components/ui/Select';
 import useSortableList from '../hooks/useSortableList';
 import { formatTime } from '../utils/format';
+import { videoStageLabels } from '../utils/stageLabels';
 import { generateFrameTimestamps } from '../utils/timestamps';
 
 type RemoveBgMode = 'standard' | 'conservative' | 'white';
@@ -55,6 +64,7 @@ export default function MultiVideoCompose() {
   const [processProgress, setProcessProgress] = useState(0);
   const [stage, setStage] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isDragActive, setIsDragActive] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -153,6 +163,23 @@ export default function MultiVideoCompose() {
       }
     }
   }, [isCapturing, isProcessing, isUploading, videos]);
+
+  const handleDeleteVideo = useCallback(
+    async (videoId: string) => {
+      if (isUploading || isCapturing || isProcessing) return;
+
+      setVideos((current) => current.filter((video) => video.video_id !== videoId));
+      setFrames((current) => current.filter((frame) => frame.video_id !== videoId));
+      setError(null);
+
+      try {
+        await deleteVideo(videoId);
+      } catch {
+        // Local reset should still finish if a temporary upload was already removed.
+      }
+    },
+    [isCapturing, isProcessing, isUploading],
+  );
 
   const handleAutoCapture = useCallback(async () => {
     if (videos.length === 0) {
@@ -311,13 +338,6 @@ export default function MultiVideoCompose() {
     }
   }, [alignmentOffsets, frames, layout, navigate, removeBg, removeBgMode]);
 
-  const stageLabels: Record<string, string> = {
-    extract: '截帧',
-    rembg: '去背景',
-    pack: '打包精灵表',
-    done: '完成',
-  };
-
   const busy = isUploading || isCapturing || isProcessing;
   const baseVideo = videos.find((video) => video.video_id === baseVideoId) ?? videos[0] ?? null;
   const targetVideos = videos.filter((video) => video.video_id !== baseVideo?.video_id);
@@ -336,105 +356,158 @@ export default function MultiVideoCompose() {
       align="center"
     >
       {error && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
-          {error}
+        <div className="mb-6 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-500/10 dark:text-red-300">
+          <Icon name="alert-circle" size={16} className="mt-0.5 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
       <div className="mb-6 grid gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">视频素材</h3>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => void handleClearVideos()}
-                disabled={busy || videos.length === 0}
-                className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                清空视频
-              </button>
-              <label className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200 dark:hover:text-gray-900">
-                选择视频
-                <input
-                  type="file"
-                  multiple
-                  accept="video/mp4,video/webm"
-                  className="hidden"
-                  disabled={busy}
-                  onChange={(event) => {
-                    void handleFiles(event.target.files);
-                    event.currentTarget.value = '';
-                  }}
-                />
-              </label>
-            </div>
-          </div>
+        <Card
+          title="视频素材"
+          description="上传多个视频，统一截取关键帧后拼成精灵表。"
+          actions={
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void handleClearVideos()}
+              disabled={busy || videos.length === 0}
+            >
+              清空视频
+            </Button>
+          }
+        >
+          <label
+            className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
+              isDragActive
+                ? 'border-brand-500 bg-brand-50/50 dark:border-brand-500 dark:bg-brand-500/10'
+                : 'border-gray-300 bg-gray-50 hover:border-brand-400 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-brand-600'
+            } ${busy ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+            onDragOver={(event) => {
+              event.preventDefault();
+              if (!busy) setIsDragActive(true);
+            }}
+            onDragLeave={() => setIsDragActive(false)}
+            onDrop={(event) => {
+              event.preventDefault();
+              setIsDragActive(false);
+              if (!busy) void handleFiles(event.dataTransfer.files);
+            }}
+          >
+            <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-400 dark:bg-gray-700 dark:text-gray-500">
+              <Icon name="upload" size={22} />
+            </span>
+            <span className="mt-4 text-sm font-medium text-gray-900 dark:text-gray-100">
+              拖拽视频到此处，或点击选择文件
+            </span>
+            <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              支持 MP4 / WebM，可一次选择多个，单个文件不超过 500MB
+            </span>
+            <input
+              type="file"
+              multiple
+              accept="video/mp4,video/webm"
+              className="hidden"
+              disabled={busy}
+              onChange={(event) => {
+                void handleFiles(event.target.files);
+                event.currentTarget.value = '';
+              }}
+            />
+          </label>
 
           {isUploading && (
-            <div className="mb-4">
-              <div className="mb-2 text-sm text-gray-500 dark:text-gray-400">上传中 {uploadProgress}%</div>
-              <div className="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-                <div className="h-full rounded-full bg-gray-900 dark:bg-gray-100 transition-all" style={{ width: `${uploadProgress}%` }} />
+            <div className="mt-4">
+              <div className="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                <span>上传中</span>
+                <span>{uploadProgress}%</span>
               </div>
+              <ProgressBar value={uploadProgress / 100} />
             </div>
           )}
 
-          {videos.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-600 py-12 text-center text-sm text-gray-400 dark:text-gray-500">
-              暂无视频
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {videos.map((video, index) => (
-                <div key={video.video_id} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4">
-                  <div className="mb-2 truncate text-sm font-medium text-gray-900 dark:text-gray-100">{video.filename}</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    #{index + 1} · {Math.round(video.duration_ms / 1000)} 秒 · {video.width}×{video.height}
+          <div className="mt-4">
+            {videos.length === 0 ? (
+              <EmptyState
+                icon="video"
+                title="暂无视频"
+                description="上传视频后即可为每个视频均匀截取关键帧。"
+              />
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {videos.map((video, index) => (
+                  <div
+                    key={video.video_id}
+                    className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-700 dark:bg-gray-800"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+                      <Icon name="film" size={18} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                        {video.filename}
+                      </div>
+                      <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        #{index + 1} · {Math.round(video.duration_ms / 1000)} 秒 · {video.width}×{video.height}
+                      </div>
+                    </div>
+                    <Button
+                      variant="dangerSoft"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => void handleDeleteVideo(video.video_id)}
+                      aria-label={`删除视频 ${video.filename}`}
+                    >
+                      <Icon name="trash" size={14} />
+                    </Button>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
 
-        <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-          <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">截帧设置</h3>
-          <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">每个视频截取帧数</label>
-          <input
+        <Card title="截帧设置" description="为每个视频均匀截取相同数量的关键帧。">
+          <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
+            每个视频截取帧数
+          </label>
+          <Input
             type="number"
             min="1"
             max="60"
             value={frameCount}
             disabled={busy}
             onChange={(event) => setFrameCount(parseInt(event.target.value) || 1)}
-            className="mb-4 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500 disabled:opacity-50"
+            className="mb-4"
           />
-          <button
+          <Button
+            className="w-full"
+            loading={isCapturing}
             onClick={() => void handleAutoCapture()}
             disabled={busy || videos.length === 0}
-            className="w-full rounded-lg bg-gray-900 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200 dark:hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
           >
             自动截取关键帧
-          </button>
+          </Button>
 
           {isCapturing && (
             <div className="mt-4">
-              <div className="mb-2 text-sm text-gray-500 dark:text-gray-400">截取中 {captureProgress}%</div>
-              <div className="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-                <div className="h-full rounded-full bg-gray-900 dark:bg-gray-100 transition-all" style={{ width: `${captureProgress}%` }} />
+              <div className="mb-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                <span>截取中</span>
+                <span>{captureProgress}%</span>
               </div>
+              <ProgressBar value={captureProgress / 100} />
             </div>
           )}
-        </div>
+        </Card>
       </div>
 
       {videos.length > 1 && frames.length > 0 && baseVideo && alignTargetVideo && (
         <div className="mb-6 grid gap-6 lg:grid-cols-[320px_1fr]">
-          <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">对齐校准</h3>
-
-            <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">基准视频</label>
-            <select
+          <Card title="对齐校准" description="以基准视频为准，微调其他视频帧的位置。">
+            <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
+              基准视频
+            </label>
+            <Select
               value={baseVideo.video_id}
               disabled={busy}
               onChange={(event) => {
@@ -445,33 +518,37 @@ export default function MultiVideoCompose() {
                   setAlignTargetVideoId(videos.find((video) => video.video_id !== nextBaseId)?.video_id ?? '');
                 }
               }}
-              className="mb-4 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500 disabled:opacity-50"
+              wrapperClassName="mb-4"
             >
               {videos.map((video) => (
                 <option key={video.video_id} value={video.video_id}>
                   {video.filename}
                 </option>
               ))}
-            </select>
+            </Select>
 
-            <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">调整视频</label>
-            <select
+            <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
+              调整视频
+            </label>
+            <Select
               value={alignTargetVideo.video_id}
               disabled={busy}
               onChange={(event) => setAlignTargetVideoId(event.target.value)}
-              className="mb-4 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500 disabled:opacity-50"
+              wrapperClassName="mb-4"
             >
               {targetVideos.map((video) => (
                 <option key={video.video_id} value={video.video_id}>
                   {video.filename}
                 </option>
               ))}
-            </select>
+            </Select>
 
             <div className="mb-4 grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">X 偏移</label>
-                <input
+                <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                  X 偏移
+                </label>
+                <Input
                   type="number"
                   value={targetOffset.x}
                   disabled={busy}
@@ -480,12 +557,13 @@ export default function MultiVideoCompose() {
                     'x',
                     Number.parseInt(event.target.value, 10) || 0
                   )}
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500 disabled:opacity-50"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">Y 偏移</label>
-                <input
+                <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                  Y 偏移
+                </label>
+                <Input
                   type="number"
                   value={targetOffset.y}
                   disabled={busy}
@@ -494,71 +572,71 @@ export default function MultiVideoCompose() {
                     'y',
                     Number.parseInt(event.target.value, 10) || 0
                   )}
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500 disabled:opacity-50"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-2">
               <div />
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => nudgeAlignmentOffset(alignTargetVideo.video_id, 0, -1)}
                 disabled={busy}
                 aria-label="上移"
-                className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"
               >
                 ↑
-              </button>
+              </Button>
               <div />
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => nudgeAlignmentOffset(alignTargetVideo.video_id, -1, 0)}
                 disabled={busy}
                 aria-label="左移"
-                className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"
               >
                 ←
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => resetAlignmentOffset(alignTargetVideo.video_id)}
                 disabled={busy}
-                className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"
               >
                 归零
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => nudgeAlignmentOffset(alignTargetVideo.video_id, 1, 0)}
                 disabled={busy}
                 aria-label="右移"
-                className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"
               >
                 →
-              </button>
+              </Button>
               <div />
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => nudgeAlignmentOffset(alignTargetVideo.video_id, 0, 1)}
                 disabled={busy}
                 aria-label="下移"
-                className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 disabled:opacity-40"
               >
                 ↓
-              </button>
+              </Button>
               <div />
             </div>
-          </div>
+          </Card>
 
-          <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">叠加预览</h3>
-              <div className="text-sm text-gray-500 dark:text-gray-400">
+          <Card
+            title="叠加预览"
+            actions={
+              <Badge tone="gray">
                 X {targetOffset.x}px · Y {targetOffset.y}px
-              </div>
-            </div>
-            <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800">
+              </Badge>
+            }
+          >
+            <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-gray-100 dark:border-gray-800 dark:bg-gray-800">
               {basePreviewFrame && (
                 <img
                   src={basePreviewFrame.thumb_url}
@@ -579,26 +657,31 @@ export default function MultiVideoCompose() {
               <span>基准：{baseVideo.filename}</span>
               <span>调整：{alignTargetVideo.filename}</span>
             </div>
-          </div>
+          </Card>
         </div>
       )}
 
-      <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">帧编排 ({frames.length} 帧)</h3>
-          <button
+      <Card
+        title={`帧编排（${frames.length} 帧）`}
+        description="拖拽调整顺序，生成精灵表时将按此顺序排列。"
+        className="mb-6"
+        actions={
+          <Button
+            variant="dangerSoft"
+            size="sm"
             onClick={() => setFrames([])}
             disabled={busy || frames.length === 0}
-            className="self-start rounded-lg border border-red-200 dark:border-red-800 bg-white dark:bg-gray-800 px-4 py-2 text-sm text-red-600 dark:text-red-400 transition-colors hover:bg-red-50 dark:hover:bg-red-950 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
           >
             清空帧
-          </button>
-        </div>
-
+          </Button>
+        }
+      >
         {frames.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-600 py-16 text-center text-sm text-gray-400 dark:text-gray-500">
-            暂无关键帧
-          </div>
+          <EmptyState
+            icon="images"
+            title="暂无关键帧"
+            description="先在上方设置截帧数量，然后点击「自动截取关键帧」。"
+          />
         ) : (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {frames.map((frame, index) => (
@@ -609,11 +692,13 @@ export default function MultiVideoCompose() {
                 onDragOver={(event) => handleDragOver(event, index)}
                 onDrop={() => handleDrop(index)}
                 onDragEnd={handleDragEnd}
-                className={`group relative overflow-hidden rounded-xl border bg-gray-50 dark:bg-gray-800 transition-all ${
-                  dragOverIndex === index ? 'border-gray-900 dark:border-gray-100 ring-2 ring-gray-900 dark:ring-gray-100' : 'border-gray-200 dark:border-gray-700'
+                className={`group relative overflow-hidden rounded-lg border bg-white transition-all dark:bg-gray-800 ${
+                  dragOverIndex === index
+                    ? 'border-brand-500 ring-2 ring-brand-500 dark:border-brand-400 dark:ring-brand-400'
+                    : 'border-gray-200 dark:border-gray-700'
                 } ${busy ? '' : 'cursor-grab active:cursor-grabbing'}`}
               >
-                <div className="flex aspect-video items-center justify-center bg-white dark:bg-gray-800">
+                <div className="flex aspect-video items-center justify-center bg-gray-50 dark:bg-gray-900">
                   <img
                     src={frame.thumb_url}
                     alt={`关键帧 ${index + 1}`}
@@ -624,144 +709,170 @@ export default function MultiVideoCompose() {
                   <div className="truncate text-xs font-medium text-gray-700 dark:text-gray-300">{frame.video_label}</div>
                   <div className="text-xs text-gray-400 dark:text-gray-500">#{index + 1} · {formatTime(frame.ts_ms)}</div>
                   <div className="flex gap-1 pt-1">
-                    <button
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 flex-1 px-2"
                       onClick={() => moveFrame(index, index - 1)}
                       disabled={busy || index === 0}
-                      className="flex-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-gray-600 dark:text-gray-400 disabled:opacity-40"
                     >
                       上移
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 flex-1 px-2"
                       onClick={() => moveFrame(index, index + 1)}
                       disabled={busy || index === frames.length - 1}
-                      className="flex-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-gray-600 dark:text-gray-400 disabled:opacity-40"
                     >
                       下移
-                    </button>
+                    </Button>
                   </div>
                 </div>
                 <button
                   onClick={() => handleDeleteFrame(index)}
                   disabled={busy}
                   aria-label={`删除第 ${index + 1} 帧`}
-                  className="absolute right-2 top-2 hidden h-6 w-6 items-center justify-center rounded-full bg-white dark:bg-gray-800 text-xs text-red-500 shadow-sm group-hover:flex disabled:opacity-40"
+                  className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-red-500 opacity-0 shadow-sm transition-opacity hover:bg-white group-hover:opacity-100 disabled:opacity-40 dark:bg-gray-800/90 dark:text-red-400 dark:hover:bg-gray-800"
                 >
-                  &times;
+                  <Icon name="x" size={12} />
                 </button>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </Card>
 
       <div className="mb-6 grid gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-          <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">处理选项</h3>
-          <label className="mb-4 flex cursor-pointer items-center gap-3">
+        <Card title="处理选项" description="去背景可让精灵表直接用于游戏引擎。">
+          <label className="flex cursor-pointer items-center gap-2.5">
             <input
               type="checkbox"
               checked={removeBg}
               disabled={busy}
               onChange={(event) => setRemoveBg(event.target.checked)}
-              className="h-5 w-5 rounded border-gray-300 dark:border-gray-600"
+              className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-800"
             />
-            <span className="text-base text-gray-700 dark:text-gray-300">去除背景</span>
+            <span className="text-sm text-gray-700 dark:text-gray-300">去除背景</span>
           </label>
 
           {removeBg && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4">
-              <div className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">去背景模式</div>
-              <div className="space-y-3">
-                <label className="flex cursor-pointer items-start gap-3">
+            <div className="mt-4">
+              <div className="mb-1.5 text-xs font-medium text-gray-700 dark:text-gray-300">去背景模式</div>
+              <div className="space-y-2">
+                <label className="block cursor-pointer">
                   <input
                     type="radio"
                     name="multi-remove-bg-mode"
                     checked={removeBgMode === 'standard'}
                     disabled={busy}
                     onChange={() => setRemoveBgMode('standard')}
-                    className="mt-0.5 h-4 w-4 border-gray-300 dark:border-gray-600"
+                    className="peer sr-only"
                   />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">标准：边缘更干净，适合普通角色和道具。</span>
+                  <div className="rounded-lg border border-gray-200 bg-white p-3 transition-colors hover:border-gray-300 peer-checked:border-brand-500 peer-checked:bg-brand-50/50 peer-checked:ring-1 peer-checked:ring-brand-500 peer-disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:peer-checked:bg-brand-500/10 dark:hover:border-gray-600">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">标准</div>
+                    <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      边缘更干净，适合普通角色和道具。
+                    </div>
+                  </div>
                 </label>
-                <label className="flex cursor-pointer items-start gap-3">
+                <label className="block cursor-pointer">
                   <input
                     type="radio"
                     name="multi-remove-bg-mode"
                     checked={removeBgMode === 'conservative'}
                     disabled={busy}
                     onChange={() => setRemoveBgMode('conservative')}
-                    className="mt-0.5 h-4 w-4 border-gray-300 dark:border-gray-600"
+                    className="peer sr-only"
                   />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">保守：优先保留弧光、残影和发光特效。</span>
+                  <div className="rounded-lg border border-gray-200 bg-white p-3 transition-colors hover:border-gray-300 peer-checked:border-brand-500 peer-checked:bg-brand-50/50 peer-checked:ring-1 peer-checked:ring-brand-500 peer-disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:peer-checked:bg-brand-500/10 dark:hover:border-gray-600">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">保守</div>
+                    <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      优先保留弧光、残影和发光特效。
+                    </div>
+                  </div>
                 </label>
-                <label className="flex cursor-pointer items-start gap-3">
+                <label className="block cursor-pointer">
                   <input
                     type="radio"
                     name="multi-remove-bg-mode"
                     checked={removeBgMode === 'white'}
                     disabled={busy}
                     onChange={() => setRemoveBgMode('white')}
-                    className="mt-0.5 h-4 w-4 border-gray-300 dark:border-gray-600"
+                    className="peer sr-only"
                   />
-                  <span className="text-sm text-gray-600 dark:text-gray-400">单一背景：仅去除纯白或近纯白背景。</span>
+                  <div className="rounded-lg border border-gray-200 bg-white p-3 transition-colors hover:border-gray-300 peer-checked:border-brand-500 peer-checked:bg-brand-50/50 peer-checked:ring-1 peer-checked:ring-brand-500 peer-disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:peer-checked:bg-brand-500/10 dark:hover:border-gray-600">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">单一背景</div>
+                    <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      仅去除纯白或近纯白背景。
+                    </div>
+                  </div>
                 </label>
               </div>
             </div>
           )}
-        </div>
+        </Card>
 
-        <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-          <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">精灵表布局</h3>
+        <Card title="精灵表布局" description="控制导出精灵表的列数与帧间距。">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">列数</label>
-              <input
+              <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                列数
+              </label>
+              <Input
                 type="number"
                 min="1"
                 max="32"
                 value={layout.cols}
                 disabled={busy}
                 onChange={(event) => setLayout((current) => ({ ...current, cols: parseInt(event.target.value) || 4 }))}
-                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500 disabled:opacity-50"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">间距 (px)</label>
-              <input
+              <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                间距 (px)
+              </label>
+              <Input
                 type="number"
                 min="0"
                 max="20"
                 value={layout.padding}
                 disabled={busy}
                 onChange={(event) => setLayout((current) => ({ ...current, padding: parseInt(event.target.value) || 0 }))}
-                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500 disabled:opacity-50"
               />
             </div>
           </div>
-        </div>
+        </Card>
       </div>
 
       {isProcessing && (
-        <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+        <Card className="mb-6">
           <div className="mb-3 flex items-center justify-between gap-4">
-            <div className="text-lg font-bold text-gray-900 dark:text-gray-100">正在处理...</div>
-            <div className="text-sm text-gray-500 dark:text-gray-400">{Math.round(processProgress * 100)}%</div>
+            <div className="flex items-center gap-2">
+              <Badge tone="brand" dot>
+                处理中
+              </Badge>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                {videoStageLabels[stage] || stage}
+              </span>
+            </div>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {Math.round(processProgress * 100)}%
+            </span>
           </div>
-          <div className="h-3 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-            <div className="h-full rounded-full bg-gray-900 dark:bg-gray-100 transition-all" style={{ width: `${Math.round(processProgress * 100)}%` }} />
-          </div>
-          <div className="mt-3 text-sm text-gray-500 dark:text-gray-400">{stageLabels[stage] || stage}</div>
-        </div>
+          <ProgressBar value={processProgress} />
+        </Card>
       )}
 
       <div className="flex justify-end">
-        <button
+        <Button
+          size="lg"
+          loading={isProcessing}
           onClick={() => void handleStartProcess()}
           disabled={busy || frames.length === 0}
-          className="rounded-lg bg-gray-900 px-8 py-3 text-base font-bold text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200 dark:hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
         >
           生成精灵表
-        </button>
+        </Button>
       </div>
     </PageShell>
   );

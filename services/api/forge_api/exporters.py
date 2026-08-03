@@ -444,7 +444,7 @@ def build_image_export(job_id: str, job_dir: Path, zip_path: Path, target: Image
     if target == "generic":
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
             root = f"image_segments_{job_id}"
-            _write_readme(archive, root, "图片切图")
+            _write_readme(archive, root, "提取要素")
             for filename in ("spritesheet.png", "spritesheet.json", "manifest.json"):
                 source_path = job_dir / filename
                 if source_path.exists():

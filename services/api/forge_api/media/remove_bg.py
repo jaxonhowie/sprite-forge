@@ -22,6 +22,7 @@ SOLID_BG_VARIANCE_SCALE = 1.6
 SOLID_BG_PROTECT_DELTA = 24.0
 SOLID_BG_PROTECT_MIN_AREA_RATIO = 0.002
 SOLID_BG_PROTECT_MIN_AREA = 24
+SOLID_BG_STRICT_DELTA = 12.0
 
 
 def _protect_red_effects(rgb_frame: np.ndarray, rgba_result: np.ndarray) -> np.ndarray:
@@ -202,6 +203,11 @@ def _remove_white_background(frame: np.ndarray) -> np.ndarray:
 
 
 def _build_solid_bg_subject_mask(delta: np.ndarray) -> np.ndarray:
+    """构建主体核心掩码：高反差种子去噪后保留大面积连通域。
+
+    不填充轮廓孔洞、不向外扩张，否则发丝间隙等被主体包围的背景色
+    区域会被误判为主体而保留下来。
+    """
     height, width = delta.shape[:2]
 
     seed = (delta >= SOLID_BG_PROTECT_DELTA).astype(np.uint8)
@@ -216,21 +222,15 @@ def _build_solid_bg_subject_mask(delta: np.ndarray) -> np.ndarray:
         cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)),
         iterations=2,
     )
-    seed = cv2.dilate(
-        seed,
-        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
-        iterations=1,
-    )
 
-    contours, _ = cv2.findContours(seed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    component_count, labels = cv2.connectedComponents(seed)
     min_area = max(SOLID_BG_PROTECT_MIN_AREA, int(height * width * SOLID_BG_PROTECT_MIN_AREA_RATIO))
-    subject_mask = np.zeros((height, width), dtype=np.uint8)
-    for contour in contours:
-        if cv2.contourArea(contour) < min_area:
-            continue
-        cv2.drawContours(subject_mask, [contour], -1, 1, thickness=cv2.FILLED)
+    subject_mask = np.zeros((height, width), dtype=bool)
+    for label in range(1, component_count):
+        if int((labels == label).sum()) >= min_area:
+            subject_mask |= labels == label
 
-    return subject_mask.astype(bool)
+    return subject_mask
 
 
 def _remove_solid_color_background(frame: np.ndarray) -> np.ndarray:
@@ -256,31 +256,32 @@ def _remove_solid_color_background(frame: np.ndarray) -> np.ndarray:
     delta = np.linalg.norm(lab_frame - background_lab.astype(np.float32), axis=2)
     subject_mask = _build_solid_bg_subject_mask(delta)
 
-    candidate_mask = ((delta <= delta_threshold) & ~subject_mask).astype(np.uint8)
-    candidate_mask = cv2.morphologyEx(
-        candidate_mask,
-        cv2.MORPH_CLOSE,
-        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
+    # 颜色距离渐变 alpha：与背景色几乎一致的像素直接透明，
+    # 不再要求与图像边缘连通，被主体包围的背景色区域（如发丝间隙）也能去除。
+    alpha = np.clip(
+        (delta - SOLID_BG_STRICT_DELTA) / max(delta_threshold - SOLID_BG_STRICT_DELTA, 1e-6),
+        0.0,
+        1.0,
     )
+    # 主体核心中真正高反差的像素强制不透明；核心内仍接近背景色的像素保持渐变。
+    alpha[subject_mask & (delta >= SOLID_BG_PROTECT_DELTA)] = 1.0
 
-    _, labels = cv2.connectedComponents(candidate_mask)
-    background_labels = np.unique(
-        np.concatenate(
-            [
-                labels[0, :],
-                labels[-1, :],
-                labels[:, 0],
-                labels[:, -1],
-            ]
-        )
-    )
-    background_labels = background_labels[background_labels != 0]
-    background_mask = np.isin(labels, background_labels)
-    background_mask &= ~subject_mask
+    alpha_u8 = (alpha * 255).astype(np.uint8)
+    alpha_u8 = cv2.GaussianBlur(alpha_u8, (0, 0), sigmaX=1.0, sigmaY=1.0)
 
-    alpha = np.where(background_mask, 0, 255).astype(np.uint8)
-    alpha = cv2.GaussianBlur(alpha, (0, 0), sigmaX=1.0, sigmaY=1.0)
-    rgba_frame[:, :, 3] = alpha
+    # 半透明边缘的背景色溢出抑制，消除残留绿边。
+    red = rgb_frame[:, :, 0].astype(np.int16)
+    green = rgb_frame[:, :, 1].astype(np.int16)
+    blue = rgb_frame[:, :, 2].astype(np.int16)
+    spill = (green > np.maximum(red, blue)) & (alpha_u8 < 255)
+    if np.any(spill):
+        green[spill] = np.maximum(red, blue)[spill]
+        rgb_frame = np.stack(
+            [red, green, blue], axis=2
+        ).astype(np.uint8)
+        rgba_frame = cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2RGBA)
+
+    rgba_frame[:, :, 3] = alpha_u8
     return rgba_frame
 
 

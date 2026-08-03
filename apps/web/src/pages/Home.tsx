@@ -2,67 +2,51 @@ import type { MouseEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { clearRuntimeData } from '../api/client';
 import PageShell from '../components/PageShell';
+import Icon, { type IconName } from '../components/ui/Icon';
 import { clearAllImageWorkflowState } from '../utils/imageWorkflowState';
 import { clearAllWorkflowState } from '../utils/workflowState';
 
-function FilmIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="5" y="4.5" width="14" height="15" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M9 4.5v15M15 4.5v15" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M5 8h4M5 12h4M5 16h4M15 8h4M15 12h4M15 16h4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
+interface EntryCard {
+  title: string;
+  description: string;
+  cta: string;
+  to: string;
+  icon: IconName;
+  iconClass: string;
 }
 
-function AlbumIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M8 14l2.5-2.5a1 1 0 0 1 1.4 0L14 13.6l1.5-1.5a1 1 0 0 1 1.4 0L20 15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="9" cy="9" r="1.4" fill="currentColor" />
-      <path d="M7 3.5h10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function StackIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="4" y="5" width="10" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
-      <rect x="10" y="11" width="10" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M7 16h3M14 8h3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-const entryCards = [
+const entryCards: EntryCard[] = [
   {
     title: '视频处理',
     description: '上传 MP4 或 WebM，自动截帧、去背景并导出精灵表。',
     cta: '进入视频流程',
     to: '/video',
-    accent: 'from-blue-500/20 to-cyan-500/10',
-    border: 'border-blue-500/30',
     icon: 'film',
+    iconClass: 'bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400',
   },
   {
     title: '多视频拼帧',
     description: '上传多个视频，截取关键帧后统一排序、删除并导出一个精灵表。',
     cta: '进入拼帧流程',
     to: '/multi-video',
-    accent: 'from-indigo-500/20 to-sky-500/10',
-    border: 'border-indigo-500/30',
-    icon: 'stack',
+    icon: 'layers',
+    iconClass: 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400',
   },
   {
-    title: '图片切图',
+    title: '提取要素',
     description: '上传白底素材图，自动识别小块、逐块去背景并导出结果。',
-    cta: '进入切图流程',
+    cta: '进入提取流程',
     to: '/image',
-    accent: 'from-green-500/20 to-emerald-500/10',
-    border: 'border-green-500/30',
-    icon: 'album',
+    icon: 'images',
+    iconClass: 'bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-400',
+  },
+  {
+    title: '图片处理',
+    description: '对单张图片去除背景或框选去除水印，即传即得。',
+    cta: '进入图片处理',
+    to: '/image-tools',
+    icon: 'sliders',
+    iconClass: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400',
   },
 ];
 
@@ -70,6 +54,8 @@ export default function Home() {
   const navigate = useNavigate();
 
   async function handleEntryClick(event: MouseEvent<HTMLAnchorElement>) {
+    // Let modifier-clicks open a new tab without touching current session state.
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     const href = event.currentTarget.getAttribute('href');
     if (!href) return;
@@ -90,25 +76,37 @@ export default function Home() {
       title="Sprite Forge"
       description="选择一条工作流开始处理素材"
       align="center"
-      contentClassName="grid gap-6 md:grid-cols-3"
+      contentClassName="space-y-8"
     >
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {entryCards.map((card) => (
           <Link
             key={card.to}
             to={card.to}
             onClick={(event) => void handleEntryClick(event)}
-            className={`rounded-lg border ${card.border} bg-gradient-to-br ${card.accent} p-6 no-underline transition-transform hover:-translate-y-0.5 hover:border-gray-400 dark:hover:border-gray-500`}
+            className="group rounded-xl border border-gray-200 bg-white p-6 no-underline shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md dark:border-gray-800 dark:bg-gray-900 dark:hover:border-brand-700"
           >
             <div className="flex h-full flex-col">
-              <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded bg-gray-900 text-gray-100 dark:bg-gray-100 dark:text-gray-900">
-                {card.icon === 'film' ? <FilmIcon /> : card.icon === 'stack' ? <StackIcon /> : <AlbumIcon />}
-              </div>
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{card.title}</h2>
-              <p className="mt-3 flex-1 text-sm leading-6 text-gray-600 dark:text-gray-400">{card.description}</p>
-              <div className="mt-6 text-sm font-medium text-gray-900 dark:text-gray-100">{card.cta} →</div>
+              <span
+                className={`mb-4 inline-flex h-11 w-11 items-center justify-center rounded-lg ${card.iconClass}`}
+              >
+                <Icon name={card.icon} size={22} />
+              </span>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{card.title}</h2>
+              <p className="mt-2 flex-1 text-sm leading-6 text-gray-500 dark:text-gray-400">
+                {card.description}
+              </p>
+              <span className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 dark:text-brand-400">
+                {card.cta}
+                <Icon name="arrow-right" size={16} className="transition-transform group-hover:translate-x-0.5" />
+              </span>
             </div>
           </Link>
         ))}
+      </div>
+      <p className="text-center text-xs text-gray-400 dark:text-gray-500">
+        所有处理均在本地完成 &middot; 支持 Cocos / Unity / Godot / GIF 等六种导出格式
+      </p>
     </PageShell>
   );
 }

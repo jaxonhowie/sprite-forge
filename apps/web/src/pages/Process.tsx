@@ -1,6 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
 import BoxSelector from '../components/BoxSelector';
+import PageShell from '../components/PageShell';
+import Badge from '../components/ui/Badge';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
+import EmptyState from '../components/ui/EmptyState';
+import Icon from '../components/ui/Icon';
+import Input from '../components/ui/Input';
+import ProgressBar from '../components/ui/ProgressBar';
+import Steps from '../components/ui/Steps';
 import { createJob, deleteVideo, getVideoMeta } from '../api/client';
 import useVideoFrame from '../hooks/useVideoFrame';
 import { videoStageLabels as stageLabels } from '../utils/stageLabels';
@@ -232,18 +241,6 @@ export default function Process() {
     };
   }, []);
 
-  const handleBack = useCallback(() => {
-    const targetVideoId = resolvedVideoId;
-    if (targetVideoId) {
-      navigate(`/frames/${targetVideoId}`, {
-        state: createWorkflowRouteState({
-          videoMeta: seededMeta ?? workflowState?.videoMeta,
-          frameTimestamps: timestamps,
-        }),
-      });
-    }
-  }, [navigate, resolvedVideoId, seededMeta, timestamps, workflowState?.videoMeta]);
-
   const handleReupload = useCallback(async () => {
     if (isProcessing) return;
 
@@ -261,17 +258,21 @@ export default function Process() {
   const firstThumbnail = timestamps.length > 0 ? thumbnails.get(timestamps[0]) : undefined;
 
   return (
-    <div className="mx-auto">
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">处理设置</h2>
-        <button
-          onClick={handleReupload}
-          disabled={isProcessing}
-          className="self-start rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
-        >
+    <PageShell
+      title="处理设置"
+      description="确认帧序列并调整去背景与排版参数，然后开始生成精灵表"
+      back={{ to: resolvedVideoId ? `/frames/${resolvedVideoId}` : '/', label: '返回帧审查' }}
+      actions={
+        <Button variant="secondary" onClick={handleReupload} disabled={isProcessing}>
           重新上传视频
-        </button>
-      </div>
+        </Button>
+      }
+    >
+      <Steps
+        steps={['上传视频', '截取帧', '确认帧', '处理设置', '导出结果']}
+        current={3}
+        className="mb-6"
+      />
 
       <video
         ref={videoRef}
@@ -281,42 +282,52 @@ export default function Process() {
       />
       <canvas ref={canvasRef} className="hidden" />
 
-      {error && (
-        <div className="mb-6 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 px-4 py-3 text-sm text-red-600 dark:text-red-400">
-          {error}
-        </div>
-      )}
-
       {isProcessing ? (
-        <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-8 text-center">
-          <div className="mb-6 text-xl font-bold text-gray-900 dark:text-gray-100">正在处理...</div>
-
-          <div className="mx-auto mb-4 h-3 max-w-md overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-            <div
-              className="h-full rounded-full bg-gray-900 dark:bg-gray-100 transition-all"
-              style={{ width: `${Math.round(progress * 100)}%` }}
-            />
+        <Card>
+          <div className="flex flex-col items-center py-6 text-center">
+            <Badge tone="brand" dot>
+              处理中
+            </Badge>
+            <div className="mt-4 text-3xl font-semibold text-gray-900 dark:text-gray-100">
+              {Math.round(progress * 100)}%
+            </div>
+            <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {stageLabels[stage] || stage || '正在处理'}
+            </div>
+            <div className="mt-5 w-full max-w-md">
+              <ProgressBar value={progress} />
+            </div>
+            <div className="mt-4 text-xs text-gray-400 dark:text-gray-500">
+              处理中请勿关闭页面
+            </div>
           </div>
-
-          <div className="text-base text-gray-600 dark:text-gray-400">
-            {stageLabels[stage] || stage} - {Math.round(progress * 100)}%
-          </div>
-
-          <div className="mt-4 text-sm text-gray-400 dark:text-gray-500">
-            处理中请勿关闭页面
-          </div>
-        </div>
+        </Card>
+      ) : error ? (
+        <EmptyState
+          icon="alert-circle"
+          title={timestamps.length > 0 ? '处理失败' : '加载失败'}
+          description={error}
+          action={
+            timestamps.length > 0 ? (
+              <Button onClick={handleStartProcess}>重试</Button>
+            ) : (
+              <Button
+                variant="secondary"
+                onClick={() => navigate(resolvedVideoId ? `/frames/${resolvedVideoId}` : '/')}
+              >
+                返回帧审查
+              </Button>
+            )
+          }
+        />
       ) : loading ? (
-        <div className="py-20 text-center text-gray-400 dark:text-gray-500">
-          <div className="mb-4 flex justify-center">
-            <div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-200 dark:border-gray-700 border-t-gray-500" />
-          </div>
-          <div className="text-lg">正在加载帧数据...</div>
+        <div className="flex flex-col items-center py-20 text-center">
+          <Icon name="loader" size={32} className="animate-spin text-gray-400 dark:text-gray-500" />
+          <div className="mt-4 text-sm text-gray-500 dark:text-gray-400">正在加载帧数据...</div>
         </div>
       ) : (
-        <>
-          <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">帧预览 ({timestamps.length} 帧)</h3>
+        <div className="space-y-6">
+          <Card title="帧预览" actions={<Badge tone="gray">{timestamps.length} 帧</Badge>}>
             <div className="flex gap-2 overflow-x-auto pb-2">
               {timestamps.map((ts, i) => {
                 const thumb = thumbnails.get(ts);
@@ -325,88 +336,102 @@ export default function Process() {
                     key={ts}
                     src={thumb}
                     alt={`帧 ${i + 1}`}
-                    className="h-20 w-auto flex-shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 object-contain"
+                    className="h-20 w-auto flex-shrink-0 rounded-lg border border-gray-200 object-contain dark:border-gray-700"
                   />
                 ) : (
-                  <div key={ts} className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-xs text-gray-400 dark:text-gray-500">
+                  <div
+                    key={ts}
+                    className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500"
+                  >
                     {Math.floor(ts / 1000)}s
                   </div>
                 );
               })}
             </div>
-          </div>
+          </Card>
 
-          <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">处理选项</h3>
-
-            <div className="space-y-4">
-              <label className="flex cursor-pointer items-center gap-3">
+          <Card title="处理选项" description="选择去背景与水印处理方式">
+            <div className="space-y-5">
+              <label className="flex cursor-pointer items-center gap-2.5">
                 <input
                   type="checkbox"
                   checked={removeBg}
                   onChange={(e) => setRemoveBg(e.target.checked)}
-                  className="h-5 w-5 rounded border-gray-300 dark:border-gray-600"
+                  className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-800"
                 />
-                <span className="text-base text-gray-700 dark:text-gray-300">去除背景</span>
+                <span className="text-sm text-gray-700 dark:text-gray-300">去除背景</span>
               </label>
 
               {removeBg && (
-                <div className="ml-8 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4">
-                  <div className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">去背景模式</div>
-                  <div className="space-y-3">
-                    <label className="flex cursor-pointer items-start gap-3">
+                <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
+                  <div className="mb-3 text-xs font-medium text-gray-700 dark:text-gray-300">
+                    去背景模式
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <label className="cursor-pointer">
                       <input
                         type="radio"
                         name="remove-bg-mode"
                         checked={removeBgMode === 'standard'}
                         onChange={() => setRemoveBgMode('standard')}
-                        className="mt-0.5 h-4 w-4 border-gray-300 dark:border-gray-600"
+                        className="peer sr-only"
                       />
-                      <span className="text-sm text-gray-600 dark:text-gray-400">
-                        标准：边缘更干净，适合普通角色和道具。
-                      </span>
+                      <div className="h-full rounded-lg border border-gray-200 bg-white p-3 transition-colors hover:border-gray-300 peer-checked:border-brand-500 peer-checked:bg-brand-50/50 peer-checked:ring-1 peer-checked:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600 dark:peer-checked:bg-brand-500/10">
+                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">标准</div>
+                        <div className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                          边缘更干净，适合普通角色和道具。
+                        </div>
+                      </div>
                     </label>
-                    <label className="flex cursor-pointer items-start gap-3">
+                    <label className="cursor-pointer">
                       <input
                         type="radio"
                         name="remove-bg-mode"
                         checked={removeBgMode === 'conservative'}
                         onChange={() => setRemoveBgMode('conservative')}
-                        className="mt-0.5 h-4 w-4 border-gray-300 dark:border-gray-600"
+                        className="peer sr-only"
                       />
-                      <span className="text-sm text-gray-600 dark:text-gray-400">
-                        保守：输出更宽松的透明边缘，优先保留弧光、残影和发光特效。
-                      </span>
+                      <div className="h-full rounded-lg border border-gray-200 bg-white p-3 transition-colors hover:border-gray-300 peer-checked:border-brand-500 peer-checked:bg-brand-50/50 peer-checked:ring-1 peer-checked:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600 dark:peer-checked:bg-brand-500/10">
+                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">保守</div>
+                        <div className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                          输出更宽松的透明边缘，优先保留弧光、残影和发光特效。
+                        </div>
+                      </div>
                     </label>
-                    <label className="flex cursor-pointer items-start gap-3">
+                    <label className="cursor-pointer">
                       <input
                         type="radio"
                         name="remove-bg-mode"
                         checked={removeBgMode === 'white'}
                         onChange={() => setRemoveBgMode('white')}
-                        className="mt-0.5 h-4 w-4 border-gray-300 dark:border-gray-600"
+                        className="peer sr-only"
                       />
-                      <span className="text-sm text-gray-600 dark:text-gray-400">
-                        单一背景：仅去除纯白或近纯白背景，尽量保留彩色发光和特效边缘。
-                      </span>
+                      <div className="h-full rounded-lg border border-gray-200 bg-white p-3 transition-colors hover:border-gray-300 peer-checked:border-brand-500 peer-checked:bg-brand-50/50 peer-checked:ring-1 peer-checked:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600 dark:peer-checked:bg-brand-500/10">
+                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          单一背景
+                        </div>
+                        <div className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                          仅去除纯白或近纯白背景，尽量保留彩色发光和特效边缘。
+                        </div>
+                      </div>
                     </label>
                   </div>
                 </div>
               )}
 
-              <label className="flex cursor-pointer items-center gap-3">
+              <label className="flex cursor-pointer items-center gap-2.5">
                 <input
                   type="checkbox"
                   checked={enableWatermark}
                   onChange={(e) => setEnableWatermark(e.target.checked)}
-                  className="h-5 w-5 rounded border-gray-300 dark:border-gray-600"
+                  className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500 dark:border-gray-600 dark:bg-gray-800"
                 />
-                <span className="text-base text-gray-700 dark:text-gray-300">去除水印</span>
+                <span className="text-sm text-gray-700 dark:text-gray-300">去除水印</span>
               </label>
 
               {enableWatermark && firstThumbnail && (
-                <div className="ml-8 mt-4">
-                  <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
+                <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800/60">
+                  <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
                     在下方图片上框选水印区域
                   </p>
                   <BoxSelector
@@ -416,53 +441,44 @@ export default function Process() {
                 </div>
               )}
             </div>
-          </div>
+          </Card>
 
-          <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <h3 className="mb-4 text-lg font-bold text-gray-900 dark:text-gray-100">精灵表布局</h3>
-
-            <div className="grid grid-cols-2 gap-4">
+          <Card title="精灵表布局" description="设置导出精灵表的列数与帧间距">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">列数</label>
-                <input
+                <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                  列数
+                </label>
+                <Input
                   type="number"
                   min="1"
                   max="32"
                   value={layout.cols}
                   onChange={(e) => { setColsTouched(true); setLayout(prev => ({ ...prev, cols: parseInt(e.target.value) || 8 })); }}
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm text-gray-500 dark:text-gray-400">间距 (px)</label>
-                <input
+                <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                  间距 (px)
+                </label>
+                <Input
                   type="number"
                   min="0"
                   max="20"
                   value={layout.padding}
                   onChange={(e) => setLayout(prev => ({ ...prev, padding: parseInt(e.target.value) || 2 }))}
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-gray-400 focus:ring-1 focus:ring-gray-400 dark:focus:border-gray-500 dark:focus:ring-gray-500"
                 />
               </div>
             </div>
-          </div>
+          </Card>
 
-          <div className="flex justify-between">
-            <button
-              onClick={handleBack}
-              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-6 py-3 text-sm text-gray-700 dark:text-gray-300 transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
-            >
-              &larr; 返回帧列表
-            </button>
-            <button
-              onClick={handleStartProcess}
-              className="rounded-lg bg-gray-900 dark:bg-gray-100 px-8 py-3 text-base font-bold text-white dark:text-gray-900 transition-colors hover:bg-gray-800 dark:hover:bg-gray-200 dark:hover:text-gray-900"
-            >
+          <div className="flex justify-end">
+            <Button size="lg" loading={isProcessing} onClick={handleStartProcess}>
               开始处理
-            </button>
+            </Button>
           </div>
-        </>
+        </div>
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -2,11 +2,12 @@
 
 [中文说明](./README.md)
 
-Sprite Forge is a small full-stack asset processing tool with three independent workflows:
+Sprite Forge is a small full-stack asset processing tool with four independent workflows:
 
 - `Video Processing`: upload a video, extract frames, remove backgrounds, fine-tune per-frame offsets, and export a sprite sheet.
 - `Multi-Video Compose`: extract keyframes from multiple videos, align them with calibration, and combine into a single sprite sheet.
-- `Image Slicing`: upload a solid-color-background asset sheet, detect isolated items automatically, remove each background, and export the results.
+- `Element Extraction`: upload a solid-color-background asset sheet, detect isolated items automatically, remove each background, and export the results.
+- `Image Tools`: remove the background of a single image (several recognition modes) or box-select a region to remove watermarks, with instant download.
 
 > For personal interest use only. Commercial use is not allowed.
 
@@ -73,7 +74,7 @@ Build output is generated in `apps/web/dist`.
 
 ## Usage
 
-From the home page, choose one of the three workflows.
+From the home page, choose one of the four workflows.
 
 ### 1. Video Processing
 
@@ -114,7 +115,7 @@ Main features:
 - Drag-and-drop reordering of the combined frame list
 - Multi-target export: per-frame PNG ZIP, sprite sheet + JSON, GIF animation, Godot 4, Unity, Cocos Creator
 
-### 3. Image Slicing
+### 3. Element Extraction
 
 Best for solid-color-background UI sheets or asset boards where each item is visually separated.
 
@@ -137,6 +138,25 @@ Typical flow:
 4. Process and preview the result
 5. Drag to reorder, click to zoom, choose an export format and download
 
+### 4. Image Tools
+
+Best for quick, one-shot edits on a single image.
+
+Main features:
+
+- Multi-image upload, each image has its own processing mode
+- Remove background: four modes — standard recognition (subject segmentation), conservative (preserves glow/aura), white-optimized (removes only pure/near-pure white), solid-color (any solid-color background)
+- Remove watermark: box-select the watermark region on the image, fixed with OpenCV inpainting
+- Side-by-side preview comparing the original and the result, with a checkerboard backdrop for transparency
+- One-click PNG result download
+
+Typical flow:
+
+1. Upload one or more images
+2. Pick remove-background or remove-watermark per image (watermark removal requires box-selecting the region first)
+3. Click "process" and wait for the result
+4. Compare with the original and download
+
 ## Directory Overview
 
 - `apps/web`: frontend application
@@ -145,6 +165,6 @@ Typical flow:
 
 ## Notes
 
-- Image Slicing currently assumes a solid-color background with visible spacing between items.
-- The "white" background removal mode only removes pure/near-pure white areas, ideal for assets with built-in glow effects; "conservative" mode preserves semi-transparent edges and auras.
+- Element Extraction currently assumes a solid-color background with visible spacing between items.
+- The "white" background removal mode only removes pure/near-pure white areas, ideal for assets with built-in glow effects; "conservative" mode preserves semi-transparent edges and auras. The "solid" mode removes any solid-color background and is used by Element Extraction and Image Tools.
 - Files under `data/` are generated at runtime and should not normally be edited manually.

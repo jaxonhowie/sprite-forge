@@ -1,5 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useParams, useNavigate } from 'react-router-dom';
+import PageShell from '../components/PageShell';
+import Badge from '../components/ui/Badge';
+import Button from '../components/ui/Button';
+import Card from '../components/ui/Card';
+import EmptyState from '../components/ui/EmptyState';
+import Icon from '../components/ui/Icon';
+import Steps from '../components/ui/Steps';
 import { deleteVideo, getVideoMeta } from '../api/client';
 import useVideoFrame from '../hooks/useVideoFrame';
 import { formatTime } from '../utils/format';
@@ -237,16 +244,19 @@ export default function Frames() {
 
 
   return (
-    <div className="mx-auto">
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">关键帧列表</h2>
-        <button
-          onClick={handleReupload}
-          className="self-start rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-800 sm:self-auto"
-        >
+    <PageShell
+      title="确认关键帧"
+      description="拖拽调整顺序或删除多余帧，确认无误后继续处理"
+      back={{ to: `/capture/${videoId ?? ''}`, label: '返回截取' }}
+      actions={
+        <Button variant="secondary" onClick={handleReupload}>
+          <Icon name="refresh" size={16} />
           重新上传视频
-        </button>
-      </div>
+        </Button>
+      }
+      contentClassName="space-y-6"
+    >
+      <Steps steps={['上传视频', '截取帧', '确认帧', '处理设置', '导出结果']} current={2} />
 
       <video
         ref={videoRef}
@@ -257,44 +267,32 @@ export default function Frames() {
       <canvas ref={canvasRef} className="hidden" />
 
       {error && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
-          {error}
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-500/10 dark:text-red-300">
+          <Icon name="alert-circle" size={16} className="mt-0.5 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
       {loading ? (
-        <div className="py-20 text-center text-gray-400 dark:text-gray-500">
-          <div className="mb-4 flex justify-center">
-            <div className="h-12 w-12 animate-spin rounded-full border-4 border-gray-200 border-t-gray-500 dark:border-gray-700" />
-          </div>
-          <div className="text-lg">正在生成缩略图...</div>
+        <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
+          <Icon name="loader" size={32} className="mb-4 animate-spin" />
+          <div className="text-sm">正在生成缩略图...</div>
         </div>
       ) : frames.length === 0 ? (
-        <div className="py-20 text-center text-gray-400 dark:text-gray-500">
-          <div className="mb-4 flex justify-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600">
-              <div className="h-6 w-8 rounded border-2 border-gray-300 dark:border-gray-600" />
+        <EmptyState
+          icon="image"
+          title="暂无关键帧"
+          description="返回截取页面标记关键帧，或重新上传视频"
+          action={
+            <div className="flex justify-center gap-3">
+              <Button onClick={handleBack}>返回截取</Button>
+              <Button variant="secondary" onClick={handleReupload}>重新上传视频</Button>
             </div>
-          </div>
-          <div className="text-lg">暂无关键帧</div>
-          <div className="mt-6 flex justify-center gap-3">
-            <button
-              onClick={handleBack}
-              className="rounded-lg bg-gray-900 px-6 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200 dark:hover:text-gray-900"
-            >
-              返回截取
-            </button>
-            <button
-              onClick={handleReupload}
-              className="rounded-lg border border-gray-200 bg-white px-6 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-800"
-            >
-              重新上传视频
-            </button>
-          </div>
-        </div>
+          }
+        />
       ) : (
-        <>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+        <Card title="关键帧列表" description="拖拽缩略图调整顺序，悬浮可删除单帧">
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
             {frames.map((frame, index) => (
               <div
                 key={frame.ts_ms}
@@ -303,9 +301,9 @@ export default function Frames() {
                 onDragOver={(e) => handleDragOver(e, index)}
                 onDrop={() => handleDrop(index)}
                 onDragEnd={handleDragEnd}
-                className={`group relative cursor-grab overflow-hidden rounded-xl border bg-gray-50 transition-all hover:shadow-md active:cursor-grabbing dark:bg-gray-800 ${
+                className={`group relative cursor-grab overflow-hidden rounded-lg border bg-white transition-all hover:shadow-md active:cursor-grabbing dark:bg-gray-800 ${
                   dragOverIndex === index
-                    ? 'border-gray-900 ring-2 ring-gray-900 dark:border-gray-100 dark:ring-gray-100'
+                    ? 'border-brand-500 ring-2 ring-brand-500/40 dark:border-brand-400 dark:ring-brand-400/40'
                     : 'border-gray-200 dark:border-gray-700'
                 }`}
               >
@@ -316,53 +314,53 @@ export default function Frames() {
                     className="w-full object-contain"
                   />
                 ) : (
-                  <div className="flex aspect-video items-center justify-center text-sm text-gray-400 dark:text-gray-500">
+                  <div className="flex aspect-video items-center justify-center bg-gray-50 text-xs text-gray-400 dark:bg-gray-800 dark:text-gray-500">
                     预览失败
                   </div>
                 )}
-                <div className="px-2 py-1.5">
-                  <div className="text-center text-xs text-gray-400 dark:text-gray-500">
-                    {formatTime(frame.ts_ms)}
-                  </div>
+                <div className="px-2 py-1.5 text-center text-xs text-gray-400 dark:text-gray-500">
+                  {formatTime(frame.ts_ms)}
                 </div>
+                <span className="absolute left-1.5 top-1.5 rounded-md bg-white/90 p-1 text-gray-400 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 dark:bg-gray-900/80 dark:text-gray-500">
+                  <Icon name="grip-vertical" size={13} />
+                </span>
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleDelete(index);
                   }}
-                  className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs text-red-500 shadow-sm opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-800"
+                  title="删除该帧"
+                  className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-md bg-white/90 text-red-500 opacity-0 shadow-sm transition-opacity hover:text-red-600 group-hover:opacity-100 dark:bg-gray-900/80 dark:text-red-400 dark:hover:text-red-300"
                 >
-                  &times;
+                  <Icon name="x" size={13} />
                 </button>
               </div>
             ))}
           </div>
 
-          <div className="mt-8 flex justify-between">
-            <button
-              onClick={handleBack}
-              className="rounded-lg border border-gray-200 bg-white px-6 py-3 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-800"
-            >
-              &larr; 返回截取
-            </button>
-
-            <div className="flex gap-3">
-              <button
-                onClick={handleClear}
-                className="rounded-lg border border-red-200 bg-white px-6 py-3 text-sm text-red-600 transition-colors hover:bg-red-50 dark:border-red-800 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-red-950"
-              >
+          <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-gray-100 pt-5 dark:border-gray-800">
+            <Badge tone="brand">共 {frames.length} 帧</Badge>
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              帧将按当前顺序拼入精灵表
+            </span>
+            <div className="ml-auto flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={handleBack}>
+                <Icon name="arrow-left" size={16} />
+                返回截取
+              </Button>
+              <Button variant="dangerSoft" onClick={handleClear}>
+                <Icon name="trash" size={16} />
                 清空所有
-              </button>
-              <button
-                onClick={handleContinue}
-                className="rounded-lg bg-gray-900 px-8 py-3 text-sm font-bold text-white transition-colors hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200 dark:hover:text-gray-900"
-              >
-                继续处理 &rarr;
-              </button>
+              </Button>
+              <Button onClick={handleContinue}>
+                确认并继续
+                <Icon name="arrow-right" size={16} />
+              </Button>
             </div>
           </div>
-        </>
+        </Card>
       )}
-    </div>
+    </PageShell>
   );
 }

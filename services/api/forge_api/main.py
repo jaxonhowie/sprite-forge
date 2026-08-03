@@ -1,8 +1,10 @@
 import asyncio
 import shutil
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
+import cv2
 from PIL import Image
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks
@@ -19,6 +21,8 @@ from .models import (
     ExtractedFramePreview,
     VideoUploadResponse,
     ImageUploadResponse,
+    ImageProcessRequest,
+    ImageProcessResponse,
     DetectSegmentsResponse,
     DetectedSegment,
     JobResponse,
@@ -31,6 +35,8 @@ from .models import (
 from . import store
 from .exporters import build_engine_export, build_image_export, build_image_gif, build_video_gif
 from .media.extract import extract_frame_with_retry, get_video_info, save_frame_preview
+from .media.inpaint import build_mask, inpaint_frame
+from .media.remove_bg import remove_background
 from .media.segment import detect_segments
 from .worker import (
     normalize_job_lighting,
@@ -288,6 +294,57 @@ async def detect_image_segments(image_id: str):
             DetectedSegment(index=index, box=segment)
             for index, segment in enumerate(segments)
         ]
+    )
+
+
+def _run_image_process(image_path: Path, request: ImageProcessRequest) -> tuple[int, int, Path]:
+    """同步执行去背景/去水印，返回 (宽, 高, 结果文件路径)。在线程池中调用。"""
+    frame = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+    if frame is None:
+        raise ValueError("无法解码图片文件")
+
+    height, width = frame.shape[:2]
+
+    if request.operation == "remove_bg":
+        rgba = remove_background(frame, request.remove_bg_mode.value)
+        result_image = Image.fromarray(rgba, "RGBA")
+    else:
+        mask = build_mask(width, height, request.watermark_box.model_dump())
+        inpainted = inpaint_frame(frame, mask)
+        result_image = Image.fromarray(inpainted[:, :, ::-1], "RGB")
+
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+    result_path = image_path.parent / f"{request.operation}-{timestamp}.png"
+    result_image.save(str(result_path))
+    return width, height, result_path
+
+
+@app.post("/api/images/{image_id}/process", response_model=ImageProcessResponse)
+async def process_image(image_id: str, request: ImageProcessRequest):
+    image_meta = store.get_image_meta(image_id)
+    if not image_meta:
+        raise HTTPException(404, "图片不存在")
+
+    image_path = store.get_image_path(image_id)
+    if not image_path:
+        raise HTTPException(404, "图片文件不存在")
+
+    if request.operation == "remove_watermark" and request.watermark_box is None:
+        raise HTTPException(400, "去除水印需要先框选水印区域")
+
+    try:
+        width, height, result_path = await asyncio.to_thread(
+            _run_image_process, image_path, request
+        )
+    except Exception as exc:
+        raise HTTPException(500, f"图片处理失败: {str(exc)}") from exc
+
+    return ImageProcessResponse(
+        image_id=image_id,
+        operation=request.operation,
+        result_url=f"/files/images/{image_id}/{result_path.name}",
+        width=width,
+        height=height,
     )
 
 
