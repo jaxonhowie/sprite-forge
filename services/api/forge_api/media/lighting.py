@@ -14,6 +14,17 @@ def _luminance_stats(frame: np.ndarray) -> tuple[float, float]:
     bgr_frame = frame[:, :, :3] if frame.ndim == 3 and frame.shape[2] == 4 else frame
     lab = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2LAB)
     lightness = lab[:, :, 0].astype(np.float32)
+
+    # 透明/背景区域不应参与亮度统计，否则会带偏目标均值。
+    # 对 RGBA 帧按 alpha 通道加权计算 mean/std。
+    if frame.ndim == 3 and frame.shape[2] == 4:
+        alpha = frame[:, :, 3].astype(np.float32) / 255.0
+        weight = float(alpha.sum())
+        if weight > 0:
+            mean = float((lightness * alpha).sum() / weight)
+            variance = float((alpha * (lightness - mean) ** 2).sum() / weight)
+            return mean, max(variance ** 0.5, MIN_STD)
+
     return float(lightness.mean()), float(lightness.std())
 
 

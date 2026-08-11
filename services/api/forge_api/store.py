@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +18,17 @@ from .models import (
 
 
 DATA_DIR = Path(__file__).parent.parent.parent.parent / "data"
+
+# 资源 id 白名单：现有 id 生成器产出 `uuid4()[:8]`（8 位十六进制）或带 `j_`/`ij_` 前缀，
+# 全部匹配该正则。拒绝 `..`、绝对路径、斜杠、空格等路径穿越载体。
+_ID_PATTERN = re.compile(r"^[A-Za-z0-9_]{1,64}$")
+
+
+def _validate_id(resource_id: str, kind: str = "id") -> str:
+    """校验资源 id，拒绝路径穿越和特殊字符。"""
+    if not isinstance(resource_id, str) or not _ID_PATTERN.match(resource_id):
+        raise ValueError(f"非法 {kind}: {resource_id!r}")
+    return resource_id
 UPLOADS_DIR = DATA_DIR / "uploads"
 IMAGES_DIR = DATA_DIR / "images"
 JOBS_DIR = DATA_DIR / "jobs"
@@ -91,6 +103,7 @@ def save_video_meta(
 
 
 def get_video_meta(video_id: str) -> Optional[VideoMeta]:
+    _validate_id(video_id, "video_id")
     meta_path = UPLOADS_DIR / video_id / "meta.json"
     if not meta_path.exists():
         return None
@@ -100,6 +113,7 @@ def get_video_meta(video_id: str) -> Optional[VideoMeta]:
 
 
 def get_video_path(video_id: str) -> Optional[Path]:
+    _validate_id(video_id, "video_id")
     video_dir = UPLOADS_DIR / video_id
     for filename in ("source.mp4", "source.webm"):
         video_path = video_dir / filename
@@ -133,6 +147,7 @@ def save_image_meta(
 
 
 def get_image_meta(image_id: str) -> Optional[ImageMeta]:
+    _validate_id(image_id, "image_id")
     meta_path = IMAGES_DIR / image_id / "meta.json"
     if not meta_path.exists():
         return None
@@ -142,6 +157,7 @@ def get_image_meta(image_id: str) -> Optional[ImageMeta]:
 
 
 def get_image_path(image_id: str) -> Optional[Path]:
+    _validate_id(image_id, "image_id")
     image_dir = IMAGES_DIR / image_id
     for filename in ("source.png", "source.jpg", "source.jpeg", "source.webp"):
         image_path = image_dir / filename
@@ -209,6 +225,7 @@ def create_image_job(
 
 
 def get_job(job_id: str) -> Optional[JobStatusResponse]:
+    _validate_id(job_id, "job_id")
     job_path = JOBS_DIR / job_id / "job.json"
     if not job_path.exists():
         return None
@@ -218,6 +235,7 @@ def get_job(job_id: str) -> Optional[JobStatusResponse]:
 
 
 def get_image_job(job_id: str) -> Optional[ImageJobStatusResponse]:
+    _validate_id(job_id, "job_id")
     job_path = IMAGE_JOBS_DIR / job_id / "job.json"
     if not job_path.exists():
         return None
@@ -253,9 +271,7 @@ def update_job(
         job.finished_at = datetime.now()
 
     job_path = JOBS_DIR / job_id / "job.json"
-    tmp_path = job_path.with_suffix(".json.tmp")
-    _write_json(tmp_path, job.model_dump(mode="json"))
-    tmp_path.rename(job_path)
+    _write_json(job_path, job.model_dump(mode="json"))
 
     return job
 
@@ -287,14 +303,13 @@ def update_image_job(
         job.finished_at = datetime.now()
 
     job_path = IMAGE_JOBS_DIR / job_id / "job.json"
-    tmp_path = job_path.with_suffix(".json.tmp")
-    _write_json(tmp_path, job.model_dump(mode="json"))
-    tmp_path.rename(job_path)
+    _write_json(job_path, job.model_dump(mode="json"))
 
     return job
 
 
 def get_job_dir(job_id: str) -> Optional[Path]:
+    _validate_id(job_id, "job_id")
     job_dir = JOBS_DIR / job_id
     if not job_dir.exists():
         return None
@@ -302,6 +317,7 @@ def get_job_dir(job_id: str) -> Optional[Path]:
 
 
 def get_image_job_dir(job_id: str) -> Optional[Path]:
+    _validate_id(job_id, "job_id")
     job_dir = IMAGE_JOBS_DIR / job_id
     if not job_dir.exists():
         return None
@@ -322,6 +338,7 @@ def list_jobs() -> List[JobStatusResponse]:
 def delete_job(job_id: str) -> bool:
     import shutil
 
+    _validate_id(job_id, "job_id")
     job_dir = JOBS_DIR / job_id
     if not job_dir.exists():
         return False
@@ -333,6 +350,7 @@ def delete_job(job_id: str) -> bool:
 def delete_video(video_id: str) -> bool:
     import shutil
 
+    _validate_id(video_id, "video_id")
     video_dir = UPLOADS_DIR / video_id
     if not video_dir.exists():
         return False
@@ -351,6 +369,7 @@ def delete_video(video_id: str) -> bool:
 def delete_image(image_id: str) -> bool:
     import shutil
 
+    _validate_id(image_id, "image_id")
     image_dir = IMAGES_DIR / image_id
     if not image_dir.exists():
         return False
@@ -369,8 +388,11 @@ def delete_image(image_id: str) -> bool:
 
 
 def _write_json(path: Path, data: dict):
-    with open(path, "w", encoding="utf-8") as f:
+    """原子写入 JSON：先写临时文件再 rename，避免崩溃留下半截 JSON。"""
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    tmp_path.replace(path)
 
 
 def _read_json(path: Path) -> dict:

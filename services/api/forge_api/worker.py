@@ -217,31 +217,31 @@ def _apply_frame_offset(frame: np.ndarray, x_offset: int, y_offset: int) -> np.n
 
 
 async def process_job(job_id: str):
-    job = store.get_job(job_id)
-    if not job:
-        raise ValueError(f"任务不存在: {job_id}")
-
-    video_path = store.get_video_path(job.video_id)
-    if not video_path:
-        raise ValueError(f"视频不存在: {job.video_id}")
-
-    video_meta = store.get_video_meta(job.video_id)
-    if not video_meta:
-        raise ValueError(f"视频元数据不存在: {job.video_id}")
-
-    job_dir = store.get_job_dir(job_id)
-    frames_dir = job_dir / "frames"
-    frames_dir.mkdir(exist_ok=True)
-
-    store.update_job(job_id, status=JobStatus.RUNNING, stage="extract", progress=0.0)
-
-    params = job.params
-    requested_timestamps = params.timestamps_ms
-    actual_timestamps: list[float] = []
-    total = len(requested_timestamps)
-    frames = []
-
     try:
+        job = store.get_job(job_id)
+        if not job:
+            raise ValueError(f"任务不存在: {job_id}")
+
+        video_path = store.get_video_path(job.video_id)
+        if not video_path:
+            raise ValueError(f"视频不存在: {job.video_id}")
+
+        video_meta = store.get_video_meta(job.video_id)
+        if not video_meta:
+            raise ValueError(f"视频元数据不存在: {job.video_id}")
+
+        job_dir = store.get_job_dir(job_id)
+        frames_dir = job_dir / "frames"
+        frames_dir.mkdir(exist_ok=True)
+
+        store.update_job(job_id, status=JobStatus.RUNNING, stage="extract", progress=0.0)
+
+        params = job.params
+        requested_timestamps = params.timestamps_ms
+        actual_timestamps: list[float] = []
+        total = len(requested_timestamps)
+        frames = []
+
         for i, ts in enumerate(requested_timestamps):
             progress = (i + 0.5) / (total + 1)
 
@@ -321,22 +321,22 @@ async def process_job(job_id: str):
 
 
 async def process_image_job(job_id: str):
-    job = store.get_image_job(job_id)
-    if not job:
-        raise ValueError(f"图片任务不存在: {job_id}")
-
-    job_dir = store.get_image_job_dir(job_id)
-    if not job_dir:
-        raise ValueError(f"图片任务目录不存在: {job_id}")
-
-    store.update_image_job(job_id, status=JobStatus.RUNNING, stage="crop", progress=0.0)
-
-    params: CreateImageJobRequest = job.params
-    total_boxes = sum(len(entry.boxes) for entry in params.images)
-    if total_boxes == 0:
-        raise ValueError("没有可处理的切图区域")
-
     try:
+        job = store.get_image_job(job_id)
+        if not job:
+            raise ValueError(f"图片任务不存在: {job_id}")
+
+        job_dir = store.get_image_job_dir(job_id)
+        if not job_dir:
+            raise ValueError(f"图片任务目录不存在: {job_id}")
+
+        store.update_image_job(job_id, status=JobStatus.RUNNING, stage="crop", progress=0.0)
+
+        params: CreateImageJobRequest = job.params
+        total_boxes = sum(len(entry.boxes) for entry in params.images)
+        if total_boxes == 0:
+            raise ValueError("没有可处理的切图区域")
+
         items: list[np.ndarray] = []
         all_boxes: list[dict] = []
         image_sources: list[dict] = []
@@ -369,13 +369,17 @@ async def process_image_job(job_id: str):
 
         store.update_image_job(job_id, stage="rembg", progress=0.4)
 
+        remove_bg_mode = params.remove_bg_mode.value if params.remove_bg else None
         processed_items: list[np.ndarray] = []
         for index, item in enumerate(items):
             progress = 0.4 + ((index + 0.5) / max(total_boxes, 1) * 0.4)
 
-            rgb_item = np.array(Image.fromarray(item, "RGBA").convert("RGB"))
-            bgr_item = rgb_item[:, :, ::-1]
-            rgba_item = await asyncio.to_thread(remove_background, bgr_item, "solid")
+            if remove_bg_mode:
+                rgb_item = np.array(Image.fromarray(item, "RGBA").convert("RGB"))
+                bgr_item = rgb_item[:, :, ::-1]
+                rgba_item = await asyncio.to_thread(remove_background, bgr_item, remove_bg_mode)
+            else:
+                rgba_item = item
             processed_items.append(rgba_item)
             store.update_image_job(job_id, progress=progress, stage="rembg")
 
@@ -413,24 +417,24 @@ async def process_frame_assembly_job(
     job_id: str,
     request: CreateFrameAssemblyJobRequest,
 ):
-    job = store.get_job(job_id)
-    if not job:
-        raise ValueError(f"任务不存在: {job_id}")
-
-    if not request.frames:
-        raise ValueError("没有可处理的帧")
-
-    job_dir = store.get_job_dir(job_id)
-    if not job_dir:
-        raise ValueError(f"任务目录不存在: {job_id}")
-
-    store.update_job(job_id, status=JobStatus.RUNNING, stage="extract", progress=0.0)
-
-    total = len(request.frames)
-    frames = []
-    actual_timestamps: list[int] = []
-
     try:
+        job = store.get_job(job_id)
+        if not job:
+            raise ValueError(f"任务不存在: {job_id}")
+
+        if not request.frames:
+            raise ValueError("没有可处理的帧")
+
+        job_dir = store.get_job_dir(job_id)
+        if not job_dir:
+            raise ValueError(f"任务目录不存在: {job_id}")
+
+        store.update_job(job_id, status=JobStatus.RUNNING, stage="extract", progress=0.0)
+
+        total = len(request.frames)
+        frames = []
+        actual_timestamps: list[int] = []
+
         for i, frame_source in enumerate(request.frames):
             video_path = store.get_video_path(frame_source.video_id)
             video_meta = store.get_video_meta(frame_source.video_id)
@@ -636,33 +640,32 @@ async def repack_image_job_items(job_id: str, item_names: list[str]) -> dict:
 
 
 async def normalize_job_lighting(job_id: str):
-    job = store.get_job(job_id)
-    if not job:
-        raise ValueError(f"任务不存在: {job_id}")
-    if job.status not in (JobStatus.DONE, JobStatus.RUNNING):
-        raise ValueError("当前任务尚未完成，无法统一灯光")
-    if job.status == JobStatus.RUNNING and job.stage != "light":
-        raise ValueError("当前任务正在处理中，无法统一灯光")
+    current_result = None
+    try:
+        job = store.get_job(job_id)
+        if not job:
+            raise ValueError(f"任务不存在: {job_id}")
+        if job.status not in (JobStatus.DONE, JobStatus.RUNNING):
+            raise ValueError("当前任务尚未完成，无法统一灯光")
+        if job.status == JobStatus.RUNNING and job.stage != "light":
+            raise ValueError("当前任务正在处理中，无法统一灯光")
 
-    job_dir = store.get_job_dir(job_id)
-    if not job_dir:
-        raise ValueError(f"任务目录不存在: {job_id}")
+        job_dir = store.get_job_dir(job_id)
+        if not job_dir:
+            raise ValueError(f"任务目录不存在: {job_id}")
 
-    frames_dir = job_dir / "frames"
-    frames = await asyncio.to_thread(_load_frame_arrays, frames_dir)
-    total = len(frames)
-    if total == 0:
-        raise ValueError("没有可统一灯光的处理后帧")
+        frames_dir = job_dir / "frames"
+        frames = await asyncio.to_thread(_load_frame_arrays, frames_dir)
+        total = len(frames)
+        if total == 0:
+            raise ValueError("没有可统一灯光的处理后帧")
 
-    current_result = job.result
-    frame_timestamps = [int(frame.get("ts_ms", 0)) for frame in (job.result or {}).get("meta_frames", [])]
-    if not frame_timestamps:
+        current_result = job.result
         meta_path = job_dir / "spritesheet.json"
         with open(meta_path, "r", encoding="utf-8") as f:
             meta = json.load(f)
         frame_timestamps = [int(frame.get("ts_ms", 0)) for frame in meta.get("frames", [])]
 
-    try:
         store.update_job(job_id, status=JobStatus.RUNNING, stage="light", progress=0.0, result=current_result)
 
         target_mean, target_std = await asyncio.to_thread(estimate_target_lighting, frames)
@@ -699,12 +702,13 @@ async def normalize_job_lighting(job_id: str):
             result=result,
         )
 
-    except Exception:
+    except Exception as e:
         store.update_job(
             job_id,
-            status=JobStatus.DONE,
+            status=JobStatus.FAILED,
             progress=1.0,
-            stage="done",
+            stage="light",
+            error=f"灯光统一失败: {e}",
             result=current_result,
         )
         raise

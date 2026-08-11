@@ -37,6 +37,23 @@ export interface WorkflowRouteState {
 const workflowKey = 'sprite_forge_workflow';
 const frameKey = (videoId: string) => `frames_${videoId}`;
 
+function safeSetItem(key: string, value: string): boolean {
+  try {
+    sessionStorage.setItem(key, value);
+    return true;
+  } catch (e) {
+    // QuotaExceededError：配额超限时降级——清掉旧值重试一次，再失败则放弃写入。
+    try {
+      sessionStorage.removeItem(key);
+      sessionStorage.setItem(key, value);
+      return true;
+    } catch {
+      console.warn(`sessionStorage 写入失败 (${key})`, e);
+      return false;
+    }
+  }
+}
+
 export const defaultWorkflowSettings: WorkflowSettings = {
   removeBg: true,
   removeBgMode: 'standard',
@@ -95,7 +112,7 @@ export function getWorkflowState(): WorkflowState | null {
 }
 
 export function setWorkflowState(state: WorkflowState): void {
-  sessionStorage.setItem(workflowKey, JSON.stringify(state));
+  safeSetItem(workflowKey, JSON.stringify(state));
 }
 
 export function mergeWorkflowState(patch: Partial<WorkflowState>): WorkflowState {
@@ -140,7 +157,7 @@ export function getFrameTimestamps(videoId: string): number[] | null {
 }
 
 export function setFrameTimestamps(videoId: string, timestamps: number[]): void {
-  sessionStorage.setItem(frameKey(videoId), JSON.stringify(timestamps));
+  safeSetItem(frameKey(videoId), JSON.stringify(timestamps));
   mergeWorkflowState({ frameTimestamps: timestamps });
 }
 

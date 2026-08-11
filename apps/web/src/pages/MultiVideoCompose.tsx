@@ -303,7 +303,12 @@ export default function MultiVideoCompose() {
       let settled = false;
 
       ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+        let data;
+        try {
+          data = JSON.parse(event.data);
+        } catch {
+          return;
+        }
         setProcessProgress(data.progress || 0);
         setStage(data.stage || '');
 

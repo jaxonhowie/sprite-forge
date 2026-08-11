@@ -3,6 +3,7 @@ import React, { useRef, useCallback, useEffect, useState } from 'react';
 interface UseVideoFrameOptions {
   videoSrc: string;
   metadataDurationMs?: number;
+  fps?: number;
   onFrameCapture?: (dataUrl: string) => void;
 }
 
@@ -25,6 +26,7 @@ interface UseVideoFrameReturn {
 export function useVideoFrame({
   videoSrc,
   metadataDurationMs = 0,
+  fps = 30,
   onFrameCapture,
 }: UseVideoFrameOptions): UseVideoFrameReturn {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -34,6 +36,11 @@ export function useVideoFrame({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(metadataDurationMs);
   const currentTimeRef = useRef(0);
+  const fpsRef = useRef(fps);
+
+  useEffect(() => {
+    fpsRef.current = fps > 0 ? fps : 30;
+  }, [fps]);
 
   useEffect(() => {
     setIsReady(false);
@@ -214,13 +221,13 @@ export function useVideoFrame({
   }, [captureFrame, seek]);
 
   const stepForward = useCallback(() => {
-    const step = 1000 / 30;
+    const step = 1000 / fpsRef.current;
     const dur = getDurationMs();
     return seek(Math.min(currentTime + step, dur || currentTime + step));
   }, [currentTime, getDurationMs, seek]);
 
   const stepBackward = useCallback(() => {
-    const step = 1000 / 30;
+    const step = 1000 / fpsRef.current;
     return seek(Math.max(currentTime - step, 0));
   }, [currentTime, seek]);
 

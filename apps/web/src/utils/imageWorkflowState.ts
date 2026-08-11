@@ -25,6 +25,22 @@ export interface ImageWorkflowRouteState {
 
 const imageWorkflowKey = 'sprite_forge_image_workflow';
 
+function safeSetItem(key: string, value: string): boolean {
+  try {
+    sessionStorage.setItem(key, value);
+    return true;
+  } catch (e) {
+    try {
+      sessionStorage.removeItem(key);
+      sessionStorage.setItem(key, value);
+      return true;
+    } catch {
+      console.warn(`sessionStorage 写入失败 (${key})`, e);
+      return false;
+    }
+  }
+}
+
 export const defaultImageWorkflowSettings: ImageWorkflowSettings = {
   layout: {
     cols: 6,
@@ -84,7 +100,7 @@ export function getImageWorkflowState(): ImageWorkflowState | null {
 }
 
 export function setImageWorkflowState(state: ImageWorkflowState): void {
-  sessionStorage.setItem(imageWorkflowKey, JSON.stringify(state));
+  safeSetItem(imageWorkflowKey, JSON.stringify(state));
 }
 
 export function mergeImageWorkflowState(

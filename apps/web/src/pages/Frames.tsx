@@ -33,6 +33,7 @@ export default function Frames() {
   const [timestamps, setTimestamps] = useState<number[]>([]);
   const [videoUrl, setVideoUrl] = useState('');
   const [metadataDuration, setMetadataDuration] = useState(0);
+  const [videoFps, setVideoFps] = useState(30);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [workflowState] = useState(() => getWorkflowState());
@@ -44,6 +45,7 @@ export default function Frames() {
   const { videoRef, canvasRef, isReady, captureFrameAt } = useVideoFrame({
     videoSrc: videoUrl,
     metadataDurationMs: metadataDuration,
+    fps: videoFps,
   });
 
   useEffect(() => {
@@ -72,6 +74,7 @@ export default function Frames() {
     if (seededMeta?.video_id === resolvedVideoId) {
       setVideoUrl(seededMeta.url);
       setMetadataDuration(seededMeta.duration_ms);
+      setVideoFps(seededMeta.fps || 30);
       mergeWorkflowState({
         currentStep: 'frames',
         videoMeta: seededMeta,
@@ -87,6 +90,7 @@ export default function Frames() {
         if (!active) return;
         setVideoUrl(meta.url);
         setMetadataDuration(meta.duration_ms);
+        setVideoFps(meta.fps || 30);
         mergeWorkflowState({
           currentStep: 'frames',
           videoMeta: meta,
@@ -295,7 +299,7 @@ export default function Frames() {
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
             {frames.map((frame, index) => (
               <div
-                key={frame.ts_ms}
+                key={`${frame.ts_ms}-${index}`}
                 draggable
                 onDragStart={() => handleDragStart(index)}
                 onDragOver={(e) => handleDragOver(e, index)}

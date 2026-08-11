@@ -10,7 +10,7 @@ import Icon from '../components/ui/Icon';
 import Input from '../components/ui/Input';
 import ProgressBar from '../components/ui/ProgressBar';
 import Steps from '../components/ui/Steps';
-import { createJob, deleteVideo, getVideoMeta } from '../api/client';
+import { createJob, deleteVideo, getVideoMeta, type WsJobUpdate } from '../api/client';
 import useVideoFrame from '../hooks/useVideoFrame';
 import { videoStageLabels as stageLabels } from '../utils/stageLabels';
 import {
@@ -46,6 +46,7 @@ export default function Process() {
   const [thumbnails, setThumbnails] = useState<Map<number, string>>(new Map());
   const [videoUrl, setVideoUrl] = useState('');
   const [metadataDuration, setMetadataDuration] = useState(0);
+  const [videoFps, setVideoFps] = useState(30);
   const [removeBg, setRemoveBg] = useState(() => workflowState?.processSettings.removeBg ?? true);
   const [removeBgMode, setRemoveBgMode] = useState<RemoveBgMode>(() => workflowState?.processSettings.removeBgMode ?? 'standard');
   const [enableWatermark, setEnableWatermark] = useState(() => workflowState?.processSettings.enableWatermark ?? false);
@@ -59,6 +60,7 @@ export default function Process() {
   const [loading, setLoading] = useState(true);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const settledRef = useRef(false);
   const locationState = location.state as WorkflowRouteState | null;
   const seededMeta = locationState?.videoMeta ?? workflowState?.videoMeta;
   const seededTimestamps = locationState?.frameTimestamps ?? workflowState?.frameTimestamps;
@@ -67,6 +69,7 @@ export default function Process() {
   const { videoRef, canvasRef, isReady, captureFrameAt } = useVideoFrame({
     videoSrc: videoUrl,
     metadataDurationMs: metadataDuration,
+    fps: videoFps,
   });
 
   useEffect(() => {
@@ -92,10 +95,11 @@ export default function Process() {
 
     setTimestamps(stored ?? []);
 
-    const applyMeta = (meta: { url: string; duration_ms: number }) => {
+    const applyMeta = (meta: { url: string; duration_ms: number; fps?: number }) => {
       if (!active) return;
       setVideoUrl(meta.url);
       setMetadataDuration(meta.duration_ms);
+      if (meta.fps) setVideoFps(meta.fps);
       mergeWorkflowState({
         currentStep: 'settings',
         videoMeta: seededMeta?.video_id === resolvedVideoId ? seededMeta : workflowState?.videoMeta,
@@ -160,6 +164,7 @@ export default function Process() {
 
     setIsProcessing(true);
     setError(null);
+    settledRef.current = false;
 
     try {
       if (!resolvedVideoId) {
@@ -196,11 +201,17 @@ export default function Process() {
       wsRef.current = ws;
 
       ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+        let data: WsJobUpdate;
+        try {
+          data = JSON.parse(event.data) as WsJobUpdate;
+        } catch {
+          return;
+        }
         setProgress(data.progress || 0);
         setStage(data.stage || '');
 
         if (data.status === 'done') {
+          settledRef.current = true;
           ws.close();
           navigate(`/result/${job_id}`, {
             state: createWorkflowRouteState({
@@ -210,6 +221,7 @@ export default function Process() {
             }),
           });
         } else if (data.status === 'failed') {
+          settledRef.current = true;
           ws.close();
           setError(data.error || '处理失败');
           setIsProcessing(false);
@@ -217,21 +229,22 @@ export default function Process() {
       };
 
       ws.onerror = () => {
-        setError('WebSocket 连接失败');
-        setIsProcessing(false);
+        if (!settledRef.current) {
+          setError('WebSocket 连接失败');
+          setIsProcessing(false);
+        }
       };
 
       ws.onclose = () => {
-        if (isProcessing) {
-          setError('连接断开');
-          setIsProcessing(false);
-        }
+        if (settledRef.current) return;
+        setError('连接断开');
+        setIsProcessing(false);
       };
     } catch (err) {
       setError(err instanceof Error ? err.message : '处理失败');
       setIsProcessing(false);
     }
-  }, [enableWatermark, isProcessing, layout, navigate, removeBg, removeBgMode, resolvedVideoId, timestamps, watermarkBox]);
+  }, [enableWatermark, layout, navigate, removeBg, removeBgMode, resolvedVideoId, seededMeta, timestamps, watermarkBox, workflowState?.videoMeta]);
 
   useEffect(() => {
     return () => {

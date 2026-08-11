@@ -138,6 +138,7 @@ class ImageEntry(BaseModel):
 class CreateImageJobRequest(BaseModel):
     images: List[ImageEntry] = Field(..., min_length=1)
     remove_bg: bool = True
+    remove_bg_mode: RemoveBgMode = RemoveBgMode.SOLID
     layout: Layout = Layout()
 
 

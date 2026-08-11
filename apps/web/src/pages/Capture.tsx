@@ -28,6 +28,33 @@ interface Frame {
   thumb_dataurl: string;
 }
 
+const THUMB_MAX_WIDTH = 240;
+
+function scaleToThumb(fullDataUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      if (img.width <= THUMB_MAX_WIDTH) {
+        resolve(fullDataUrl);
+        return;
+      }
+      const scale = THUMB_MAX_WIDTH / img.width;
+      const canvas = document.createElement('canvas');
+      canvas.width = THUMB_MAX_WIDTH;
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(fullDataUrl);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => resolve(fullDataUrl);
+    img.src = fullDataUrl;
+  });
+}
+
 export default function Capture() {
   const { videoId } = useParams<{ videoId: string }>();
   const location = useLocation();
@@ -45,6 +72,7 @@ export default function Capture() {
   const [stepMs, setStepMs] = useState(100);
   const [isAutoCapturing, setIsAutoCapturing] = useState(false);
   const [autoCaptureProgress, setAutoCaptureProgress] = useState(0);
+  const [videoFps, setVideoFps] = useState(30);
 
   const {
     videoRef,
@@ -61,6 +89,7 @@ export default function Capture() {
   } = useVideoFrame({
     videoSrc: videoUrl ?? '',
     metadataDurationMs: metadataDuration,
+    fps: videoFps,
   });
 
   useEffect(() => {
@@ -70,6 +99,7 @@ export default function Capture() {
       if (!active) return;
       setVideoUrl(meta.url);
       setMetadataDuration(meta.duration_ms);
+      setVideoFps(meta.fps || 30);
       setError(null);
       mergeWorkflowState({
         currentStep: 'capture',
@@ -116,10 +146,12 @@ export default function Capture() {
     const dataUrl = captureFrame();
     if (!dataUrl) return;
 
-    setFrames((prev) => {
-      const next = [...prev, { ts_ms: currentTime, thumb_dataurl: dataUrl }];
-      updateFramesState(next);
-      return next;
+    void scaleToThumb(dataUrl).then((thumb) => {
+      setFrames((prev) => {
+        const next = [...prev, { ts_ms: currentTime, thumb_dataurl: thumb }];
+        updateFramesState(next);
+        return next;
+      });
     });
   }, [captureFrame, currentTime, pause, updateFramesState]);
 
@@ -167,6 +199,10 @@ export default function Capture() {
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (isAutoCapturing) return;
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+      return;
+    }
     switch (e.key) {
       case 'ArrowLeft':
         e.preventDefault();
@@ -353,7 +389,7 @@ export default function Capture() {
               <div className="max-h-[50vh] overflow-y-auto pr-1">
                 <div className="grid grid-cols-2 gap-3">
                   {frames.map((frame, index) => (
-                    <div key={index} className="group relative">
+                    <div key={`${frame.ts_ms}-${index}`} className="group relative">
                       <button
                         type="button"
                         onClick={() => void handleSeekToFrame(frame.ts_ms)}

@@ -22,6 +22,8 @@ Prerequisites:
 
 - Node.js 18+
 - Python 3.10+
+- ffmpeg 5.0+ (includes ffprobe, used for video frame extraction and metadata parsing)
+- On first use of "standard" or "conservative" background removal modes, rembg will auto-download the u2net model (~176MB, requires internet)
 
 Install dependencies:
 
