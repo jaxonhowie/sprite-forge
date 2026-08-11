@@ -38,10 +38,15 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Local docs
-docs/
-
 # Local settings
 .claude/
 .trae/
+.zcode/
 AGENTS.md
+
+# OpenSpec (local spec-driven dev tooling)
+openspec/
+
+# Local code-understanding tooling artifacts
+.ua/
+.understand-anything/
