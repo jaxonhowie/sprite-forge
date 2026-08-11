@@ -33,7 +33,14 @@ from .models import (
     RepackImageJobItemsRequest,
 )
 from . import store
-from .exporters import build_engine_export, build_image_export, build_image_gif, build_video_gif
+from .exporters import (
+    build_engine_export,
+    build_image_export,
+    build_image_gif,
+    build_image_lottie,
+    build_video_gif,
+    build_video_lottie,
+)
 from .media.extract import extract_frame_with_retry, get_video_info, save_frame_preview
 from .media.inpaint import build_mask, inpaint_frame
 from .media.remove_bg import remove_background
@@ -542,7 +549,7 @@ async def delete_job(job_id: str):
 async def export_job(
     job_id: str,
     background_tasks: BackgroundTasks,
-    target: Literal["generic", "cocos", "unity", "godot", "frames", "gif"] = "generic",
+    target: Literal["generic", "cocos", "unity", "godot", "frames", "gif", "lottie"] = "generic",
 ):
     job = store.get_job(job_id)
     if not job:
@@ -555,7 +562,7 @@ async def export_job(
     if target == "gif":
         gif_path = store.TMP_DIR / f"{job_id}_video.gif"
         try:
-            build_video_gif(job_dir, gif_path)
+            await asyncio.to_thread(build_video_gif, job_dir, gif_path)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         background_tasks.add_task(gif_path.unlink, missing_ok=True)
@@ -563,6 +570,19 @@ async def export_job(
             gif_path,
             media_type="image/gif",
             filename=f"spritesheet_{job_id}.gif",
+        )
+
+    if target == "lottie":
+        lottie_path = store.TMP_DIR / f"{job_id}_video_lottie.json"
+        try:
+            await asyncio.to_thread(build_video_lottie, job_dir, lottie_path)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        background_tasks.add_task(lottie_path.unlink, missing_ok=True)
+        return FileResponse(
+            lottie_path,
+            media_type="application/json",
+            filename=f"spritesheet_{job_id}.json",
         )
 
     frames_dir = job_dir / "frames"
@@ -578,7 +598,7 @@ async def export_job(
 
     zip_path = store.TMP_DIR / f"{job_id}_{target}_export.zip"
     try:
-        build_engine_export(job_id, job_dir, zip_path, target)
+        await asyncio.to_thread(build_engine_export, job_id, job_dir, zip_path, target)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -595,7 +615,7 @@ async def export_job(
 async def export_image_job(
     job_id: str,
     background_tasks: BackgroundTasks,
-    target: Literal["generic", "items", "gif", "cocos", "unity", "godot"] = "generic",
+    target: Literal["generic", "items", "gif", "cocos", "unity", "godot", "lottie"] = "generic",
 ):
     job = store.get_image_job(job_id)
     if not job:
@@ -608,7 +628,7 @@ async def export_image_job(
     if target == "gif":
         gif_path = store.TMP_DIR / f"{job_id}_image.gif"
         try:
-            build_image_gif(job_dir, gif_path)
+            await asyncio.to_thread(build_image_gif, job_dir, gif_path)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         background_tasks.add_task(gif_path.unlink, missing_ok=True)
@@ -616,6 +636,19 @@ async def export_image_job(
             gif_path,
             media_type="image/gif",
             filename=f"image_segments_{job_id}.gif",
+        )
+
+    if target == "lottie":
+        lottie_path = store.TMP_DIR / f"{job_id}_image_lottie.json"
+        try:
+            await asyncio.to_thread(build_image_lottie, job_dir, lottie_path)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        background_tasks.add_task(lottie_path.unlink, missing_ok=True)
+        return FileResponse(
+            lottie_path,
+            media_type="application/json",
+            filename=f"image_segments_{job_id}.json",
         )
 
     if target != "items":
@@ -626,7 +659,7 @@ async def export_image_job(
 
     zip_path = store.TMP_DIR / f"{job_id}_{target}_image_export.zip"
     try:
-        build_image_export(job_id, job_dir, zip_path, target)
+        await asyncio.to_thread(build_image_export, job_id, job_dir, zip_path, target)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     background_tasks.add_task(zip_path.unlink, missing_ok=True)

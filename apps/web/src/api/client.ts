@@ -164,8 +164,8 @@ export interface ImageJobStatus {
   };
 }
 
-export type EngineExportTarget = 'generic' | 'cocos' | 'unity' | 'godot' | 'frames' | 'gif';
-export type ImageExportTarget = 'generic' | 'items' | 'gif' | 'cocos' | 'unity' | 'godot';
+export type EngineExportTarget = 'generic' | 'cocos' | 'unity' | 'godot' | 'frames' | 'gif' | 'lottie';
+export type ImageExportTarget = 'generic' | 'items' | 'gif' | 'cocos' | 'unity' | 'godot' | 'lottie';
 
 export interface WsJobUpdate {
   stage: string;

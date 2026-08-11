@@ -1,3 +1,4 @@
+import base64
 import json
 import plistlib
 import zipfile
@@ -8,8 +9,8 @@ import numpy as np
 from PIL import Image
 
 
-ExportTarget = Literal["generic", "cocos", "unity", "godot", "frames", "gif"]
-ImageExportTarget = Literal["generic", "items", "gif", "cocos", "unity", "godot"]
+ExportTarget = Literal["generic", "cocos", "unity", "godot", "frames", "gif", "lottie"]
+ImageExportTarget = Literal["generic", "items", "gif", "cocos", "unity", "godot", "lottie"]
 
 ANIMATION_FPS = 12
 
@@ -460,3 +461,99 @@ def build_image_export(job_id: str, job_dir: Path, zip_path: Path, target: Image
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
         _write_engine_package(archive, target, job_dir, meta, sheet_size)
+
+
+def _lottie_opacity_keyframes(i: int) -> list[dict]:
+    """Hold keyframes: image layer i is opacity 100 only at frame i, else 0."""
+    if i == 0:
+        return [
+            {"t": 0, "s": [100], "h": 1},
+            {"t": 1, "s": [0]},
+        ]
+    return [
+        {"t": 0, "s": [0], "h": 1},
+        {"t": i, "s": [100], "h": 1},
+        {"t": i + 1, "s": [0]},
+    ]
+
+
+def _build_lottie_from_pngs(
+    png_paths: list[Path],
+    out_path: Path,
+    fps: int = ANIMATION_FPS,
+) -> dict:
+    if not png_paths:
+        raise ValueError("没有可导出的 PNG 帧")
+
+    assets: list[dict] = []
+    max_w, max_h = 0, 0
+    for i, png_path in enumerate(png_paths):
+        with Image.open(png_path) as img:
+            w, h = img.size
+        max_w = max(max_w, w)
+        max_h = max(max_h, h)
+        data_uri = "data:image/png;base64," + base64.b64encode(png_path.read_bytes()).decode("ascii")
+        assets.append({"id": f"fr_{i}", "w": w, "h": h, "p": data_uri, "e": 1, "u": ""})
+
+    frame_count = len(png_paths)
+    layers: list[dict] = []
+    for i, asset in enumerate(assets):
+        w, h = asset["w"], asset["h"]
+        layers.append(
+            {
+                "ddd": 0,
+                "ind": i,
+                "ty": 2,
+                "nm": f"frame_{i}",
+                "ks": {
+                    "o": {"a": 1, "k": _lottie_opacity_keyframes(i)},
+                    "r": {"a": 0, "k": 0},
+                    "p": {"a": 0, "k": [max_w / 2, max_h / 2, 0]},
+                    "a": {"a": 0, "k": [w / 2, h / 2, 0]},
+                    "s": {"a": 0, "k": [100, 100, 100]},
+                },
+                "ao": 0,
+                "ip": 0,
+                "op": frame_count,
+                "st": 0,
+                "refId": asset["id"],
+            }
+        )
+
+    lottie = {
+        "v": "5.7.4",
+        "fr": fps,
+        "ip": 0,
+        "op": frame_count,
+        "w": max_w,
+        "h": max_h,
+        "nm": "spriteforge",
+        "ddd": 0,
+        "meta": {"g": "Sprite Forge", "a": "Sprite Forge", "d": "Sprite animation export", "tc": ""},
+        "assets": assets,
+        "layers": layers,
+    }
+
+    out_path.write_text(json.dumps(lottie, ensure_ascii=False), encoding="utf-8")
+    return lottie
+
+
+def build_video_lottie(job_dir: Path, out_path: Path) -> None:
+    fps = ANIMATION_FPS
+    meta_path = job_dir / "spritesheet.json"
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            fps = int(meta.get("animation", {}).get("fps", ANIMATION_FPS)) or ANIMATION_FPS
+        except (json.JSONDecodeError, ValueError, TypeError):
+            pass
+
+    frames_dir = job_dir / "frames"
+    frame_paths = sorted(frames_dir.glob("*.png")) if frames_dir.exists() else []
+    _build_lottie_from_pngs(frame_paths, out_path, fps=fps)
+
+
+def build_image_lottie(job_dir: Path, out_path: Path) -> None:
+    items_dir = job_dir / "items"
+    item_paths = sorted(items_dir.glob("*.png")) if items_dir.exists() else []
+    _build_lottie_from_pngs(item_paths, out_path, fps=ANIMATION_FPS)

@@ -258,7 +258,7 @@ export default function Result() {
       }
 
       const url = getJobExportUrl(resolvedJobId, target as EngineExportTarget);
-      const ext = target === 'gif' ? 'gif' : 'zip';
+      const ext = target === 'gif' ? 'gif' : target === 'lottie' ? 'json' : 'zip';
       const blob = await downloadBlobWithTimeout(url);
       const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -567,6 +567,13 @@ export default function Result() {
                   <span className="min-w-0">
                     <span className="block font-medium">导出 GIF</span>
                     <span className="block text-xs text-gray-400 dark:text-gray-500">生成动画 GIF 动图</span>
+                  </span>
+                </button>
+                <button onClick={() => void handleExport('lottie')} className={exportMenuItemClass}>
+                  <Icon name="sparkles" size={16} className="shrink-0 text-gray-400 dark:text-gray-500" />
+                  <span className="min-w-0">
+                    <span className="block font-medium">导出 Lottie</span>
+                    <span className="block text-xs text-gray-400 dark:text-gray-500">Lottie 动画 JSON</span>
                   </span>
                 </button>
                 <div className="my-1 border-t border-gray-100 dark:border-gray-800" />

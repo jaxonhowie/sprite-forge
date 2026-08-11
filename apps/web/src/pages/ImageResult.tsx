@@ -137,7 +137,7 @@ export default function ImageResult() {
       const blobUrl = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = blobUrl;
-      const ext = exportTarget === 'gif' ? 'gif' : 'zip';
+      const ext = exportTarget === 'gif' ? 'gif' : exportTarget === 'lottie' ? 'json' : 'zip';
       anchor.download = `image_segments_${resolvedJobId}.${ext}`;
       document.body.appendChild(anchor);
       anchor.click();
@@ -326,6 +326,17 @@ export default function ImageResult() {
                   <div>
                     <div className="font-medium">导出 GIF</div>
                     <div className="text-xs text-gray-400 dark:text-gray-500">逐帧动画 GIF</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleExport('lottie')}
+                  className={exportMenuItemClass}
+                >
+                  <span className="text-base">✨</span>
+                  <div>
+                    <div className="font-medium">导出 Lottie</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500">Lottie 动画 JSON</div>
                   </div>
                 </button>
                 <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
