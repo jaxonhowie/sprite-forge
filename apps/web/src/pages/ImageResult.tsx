@@ -107,21 +107,26 @@ export default function ImageResult() {
     return segments[segments.length - 1] ?? '';
   }, []);
 
-  const syncArrangedItems = useCallback(async () => {
-    if (!resolvedJobId || !itemsDirty) return;
+  const syncArrangedItems = useCallback(async (): Promise<string[] | null> => {
+    if (!resolvedJobId || !itemsDirty) return null;
     const itemNames = arrangedItemUrls.map(getItemName).filter(Boolean);
-    if (itemNames.length !== arrangedItemUrls.length) return;
+    if (itemNames.length !== arrangedItemUrls.length) return null;
     const updatedJob = await repackImageJobItems(resolvedJobId, itemNames);
     await mutate(updatedJob, false);
     setItemsDirty(false);
+    // repack 会重写 items 并刷新版本号 (?v=)，必须使用返回的最新 URL 才能拿到正确顺序的 PNG。
+    return updatedJob.result?.item_urls ?? null;
   }, [arrangedItemUrls, getItemName, itemsDirty, mutate, resolvedJobId]);
 
   const handleExport = useCallback(async (target: ImageExportTarget | 'png') => {
     setExportOpen(false);
     if (!resolvedJobId) return;
 
+    let itemUrls: string[];
     try {
-      await syncArrangedItems();
+      // 同步用户调整后的顺序；repack 成功时返回最新 item URL（含新版本号）。
+      const syncedItemUrls = await syncArrangedItems();
+      itemUrls = syncedItemUrls ?? arrangedItemUrls;
     } catch (err) {
       console.error('同步顺序失败:', err);
       setActionError(err instanceof Error ? err.message : '同步顺序失败');
@@ -131,13 +136,31 @@ export default function ImageResult() {
     setExporting(true);
     setActionError(null);
     try {
-      const exportTarget = target === 'png' ? 'items' : target;
-      const url = getImageJobExportUrl(resolvedJobId, exportTarget as ImageExportTarget);
+      if (target === 'png') {
+        // 导出 PNG：单张直接下载，多张逐张触发浏览器多文件下载，不再打包成 ZIP。
+        if (itemUrls.length === 0) {
+          throw new Error('没有可导出的 PNG');
+        }
+        for (const itemUrl of itemUrls) {
+          const blob = await downloadBlobWithTimeout(itemUrl);
+          const blobUrl = window.URL.createObjectURL(blob);
+          const anchor = document.createElement('a');
+          anchor.href = blobUrl;
+          anchor.download = getItemName(itemUrl) || `image_segment_${resolvedJobId}.png`;
+          document.body.appendChild(anchor);
+          anchor.click();
+          document.body.removeChild(anchor);
+          window.URL.revokeObjectURL(blobUrl);
+        }
+        return;
+      }
+
+      const url = getImageJobExportUrl(resolvedJobId, target);
       const blob = await downloadBlobWithTimeout(url);
       const blobUrl = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = blobUrl;
-      const ext = exportTarget === 'gif' ? 'gif' : exportTarget === 'lottie' ? 'json' : 'zip';
+      const ext = target === 'gif' ? 'gif' : target === 'lottie' ? 'json' : 'zip';
       anchor.download = `image_segments_${resolvedJobId}.${ext}`;
       document.body.appendChild(anchor);
       anchor.click();
@@ -149,7 +172,7 @@ export default function ImageResult() {
     } finally {
       setExporting(false);
     }
-  }, [resolvedJobId, syncArrangedItems]);
+  }, [arrangedItemUrls, getItemName, resolvedJobId, syncArrangedItems]);
 
   const handleRestart = useCallback(async () => {
     const imageIds = job?.image_ids ?? workflowState?.imageMetas?.map((m) => m.image_id) ?? [];
@@ -292,7 +315,7 @@ export default function ImageResult() {
                   <span className="text-base">🖼</span>
                   <div>
                     <div className="font-medium">下载 PNG</div>
-                    <div className="text-xs text-gray-400 dark:text-gray-500">每帧 PNG 打包 ZIP</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500">每张 PNG 单独下载</div>
                   </div>
                 </button>
                 <button
