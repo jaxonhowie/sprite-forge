@@ -92,7 +92,7 @@ npm --prefix apps/web run build
 - 结果页支持拖拽调整帧顺序、逐帧 X/Y 偏移微调
 - 逐帧播放预览动画效果
 - 可选灯光归一化，统一亮度和对比度
-- 多目标导出：逐帧 PNG ZIP、GIF 动画、精灵表 + JSON、Godot 4、Unity、Cocos Creator
+- 多目标导出：逐帧 PNG ZIP、GIF 动画、Lottie JSON、精灵表 + JSON、Godot 4、Unity、Cocos Creator
 
 典型流程：
 
@@ -115,7 +115,7 @@ npm --prefix apps/web run build
 - 三种去背景模式：标准、保守（保留光效）、白色（仅去除纯白背景）
 - 可选灯光归一化
 - 支持拖拽调整合并帧顺序
-- 多目标导出：逐帧 PNG ZIP、精灵表 + JSON、GIF 动画、Godot 4、Unity、Cocos Creator
+- 多目标导出：逐帧 PNG ZIP、精灵表 + JSON、GIF 动画、Lottie JSON、Godot 4、Unity、Cocos Creator
 
 ### 3. 提取要素
 
@@ -130,7 +130,7 @@ npm --prefix apps/web run build
 - 横向网格预览，支持拖拽调整顺序和单个删除
 - 点击任意图块可放大查看原图
 - 逐帧播放预览动画效果
-- 多目标导出：逐项 PNG ZIP、GIF 动画、精灵表 + JSON、Godot 4、Unity、Cocos Creator
+- 多目标导出：PNG 逐张直接下载、逐项 PNG ZIP、GIF 动画、Lottie JSON、精灵表 + JSON、Godot 4、Unity、Cocos Creator
 
 典型流程：
 

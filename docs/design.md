@@ -452,13 +452,14 @@ data/
 
 ## 7. 导出系统
 
-支持 6 种导出目标，通过 `?target=` 参数选择：
+支持 7 种导出目标，通过 `?target=` 参数选择：
 
 | 目标 | 产出文件 | 说明 |
 |---|---|---|
 | `generic` | spritesheet.png + spritesheet.json + 全部帧 PNG | 默认，通用格式 |
 | `frames` | 仅帧 PNG 文件 | 只要单帧素材 |
 | `gif` | animated.gif | 透明 GIF，160ms/帧（~6.25fps），256 色调色板 |
+| `lottie` | 自包含 bodymovin JSON | 每帧 base64 内嵌图资源，opacity hold 关键帧逐帧切换 |
 | `cocos` | spritesheet.png + .plist + animation.json | Cocos Creator plistlib 格式 3 |
 | `unity` | spritesheet.png + .spriteforge.json + Editor/SpriteForgeImporter.cs | 完整 C# AssetPostprocessor，自动配置切片 + AnimationClip |
 | `godot` | spritesheet.png + .json + sprite_frames.tres | Godot 4 SpriteFrames 资源 + AtlasTexture 子资源 |
@@ -538,7 +539,7 @@ data/
 | **跨浏览器** | 仅测 Chrome/Edge/Safari，Firefox video canvas 可能有性能问题 | 待测试 |
 | **移动端** | 不支持 | 当前非目标 |
 | **国际化** | UI 文案中文，无 i18n | Phase 3 |
-| **零测试覆盖** | 无任何自动化测试 | Phase 1 补齐 |
+| **测试覆盖** | 后端已有 69 个 pytest（store/worker/lighting/lottie/models，全绿）；前端测试仍为零 | 前端测试 Phase 1 补齐 |
 | **无容器化** | 无 Docker / CI/CD | Phase 1 补齐 |
 
 ---
@@ -547,10 +548,10 @@ data/
 
 ### Phase 1：工程质量补齐
 
-**测试策略**
+**测试策略**（后端部分已于 2026-08 落地：69 个 pytest，覆盖 store 校验、worker 状态机、lighting、lottie 导出、models）
 - `media/*` 模块单元测试（pytest）：extract 的 ffmpeg 调用 mock、remove_bg 各模式的输入输出、pack 的网格计算、segment 的边界检测
-- API 集成测试（httpx + pytest-asyncio）：上传 → 创建 job → 轮询完成 → 验证产物
-- 前端关键路径 smoke test（Playwright）：视频工作流端到端
+- API 集成测试（httpx + pytest-asyncio）：上传 → 创建 job → 轮询完成 → 验证产物（已有 TestClient endpoint 测试雏形）
+- 前端关键路径 smoke test（Playwright）：视频工作流端到端（仍缺）
 
 **Docker 化**
 - `Dockerfile`：Python 3.11 + ffmpeg + Node.js 构建前端 + uvicorn 启动

@@ -5,6 +5,8 @@
 **评估方式**：静态代码审查 + 关键行源码核对 + `tsc --noEmit` 类型检查 + Git 历史分析
 
 > **更新记录**：2026-08-03 新增第四条工作流「图片处理」（`ImageTools` 页面 + `/api/images/{id}/process` 端点）与 `remove_bg` `solid` 模式重写（渐变 alpha 替代连通域法），本文档已同步修订。
+>
+> **更新记录**：2026-08-17 复核。期间落地：Lottie（bodymovin JSON）导出格式、图片切片结果页 PNG 逐张直接下载（不再打包 ZIP）、后端 pytest 测试套件（69 个，`services/api/tests/`）。缺陷 #1~#7 已修复（#4 前端半项除外），详见 §5 复核状态与 §6 工程化表格。
 
 ---
 
@@ -12,11 +14,12 @@
 
 | 维度 | 情况 |
 |---|---|
-| 总提交数 | 24 个（2026-05-06 ~ 2026-07-17） |
+| 总提交数 | 29 个（2026-05-06 ~ 2026-08-12） |
 | 后端 | FastAPI + OpenCV + Pillow + rembg，约 3,182 行 Python |
 | 前端 | React 18 + TypeScript + Vite + Tailwind + SWR，约 5,800 行 TS/TSX |
-| 设计文档 | `docs/design.md` 详尽（614 行），但**被 `.gitignore` 排除，未入版本控制** |
-| 测试/CI/Lint | **全部缺失** |
+| 设计文档 | `docs/design.md` 详尽（614 行），已纳入版本控制 |
+| 测试 | 后端 pytest 69 个全绿（`services/api/tests/`，2026-08 补齐）；前端测试仍缺失 |
+| CI/Lint | **缺失** |
 
 ---
 
@@ -32,7 +35,7 @@
 | 图片处理 | `ImageTools` 单页 | 完整，同步请求即传即得（无后台任务） |
 | 光照归一化（后置处理） | `Result` 页操作 | 可用，但失败时被静默吞噬（见缺陷 #3） |
 
-导出系统是完成度最高的模块，支持 6 种格式：`generic` / `frames(items) zip` / `gif` / `cocos plist` / `unity json` / `godot SpriteFrames.tres`。其中 Unity 导出内嵌完整 C# `AssetPostprocessor`，可自动生成 Sprite 切片与 `.anim`；GIF 导出正确处理透明通道（255 色量化 + 调色板透明 + `disposal=2`）。
+导出系统是完成度最高的模块，支持 7 种格式：`generic` / `frames(items) zip` / `gif` / `lottie`（bodymovin JSON，2026-08-11 新增）/ `cocos plist` / `unity json` / `godot SpriteFrames.tres`。其中 Unity 导出内嵌完整 C# `AssetPostprocessor`，可自动生成 Sprite 切片与 `.anim`；GIF 导出正确处理透明通道（255 色量化 + 调色板透明 + `disposal=2`）；Lottie 导出将每帧 base64 内嵌为图资源、用 opacity hold 关键帧逐帧切换。图片切片结果页另支持 PNG 逐张直接下载（2026-08-12 起不再打包 ZIP）。
 
 ---
 
@@ -118,6 +121,16 @@ Lab 的 L 通道 mean/std 匹配，目标值取全帧集中位数，scale/shift 
 
 以下缺陷已逐行核对源码，属实。
 
+> **2026-08-17 复核状态**（随测试套件补齐集中修复）：
+> - ✅ #1 路径穿越：`store.py` 各入口均经 `_validate_id` 校验（`test_store_validation.py` 21 例覆盖）。
+> - ✅ #2 图片切片忽略 `remove_bg` 参数：`worker.py:372-380` 已按 `params.remove_bg` / `remove_bg_mode` 分支（`test_image_job_remove_bg.py` 覆盖）。
+> - ✅ #3 光照归一化静默吞噬：失败现标记 `FAILED` 并写 `error`（`test_worker_state_machine.py::TestNormalizeLightingFailure` 覆盖）。
+> - 🔶 #4 前置校验卡 PENDING：后端已修复（校验失败即标记 `FAILED`，同文件 `TestProcessJobValidationFailure` 覆盖）；前端 `Result.tsx:84` 仍只轮询 `running`、不含 `pending`，这半项未闭环。
+> - ✅ #5 Process 页 WS 断连陈旧闭包：已改为 `settledRef` 模式，断连可正常提示。
+> - ✅ #6 死代码 `useJobProgress.ts`：已删除。
+> - ✅ #7 Capture 页键盘冲突：`Capture.tsx:202-205` 已过滤输入框/可编辑元素焦点。
+> - ⏸ #8~#12 轻微项本次未逐项复核；其中 #12 ffmpeg 依赖已在 README「环境要求」中声明。
+
 ### 严重
 
 1. **路径穿越漏洞（安全）** — `services/api/forge_api/store.py:322-330`
@@ -159,7 +172,7 @@ Lab 的 L 通道 mean/std 匹配，目标值取全帧集中位数，scale/shift 
 
 | 维度 | 状态 | 备注 |
 |---|---|---|
-| 测试 | ❌ 缺失 | 无前后端测试、无 pytest/vitest/playwright |
+| 测试 | 🟡 部分补齐 | 后端 69 个 pytest 全绿（2026-08）；前端测试仍缺失 |
 | CI/CD | ❌ 缺失 | 无 `.github/workflows` |
 | Lint/格式化 | ❌ 缺失 | 无 ESLint/Prettier/ruff/black |
 | Docker | ❌ 缺失 | 无 Dockerfile / docker-compose |
@@ -167,7 +180,7 @@ Lab 的 L 通道 mean/std 匹配，目标值取全帧集中位数，scale/shift 
 | 类型检查 | ✅ 通过 | `tsc --noEmit` 全绿 |
 | 构建 | ✅ 可用 | `npm --prefix apps/web run build` 是仅有的质量门 |
 
-`docs/design.md` 对自身工程化缺口完全自知，已将测试/CI 列入 Phase 1 计划，但目前仍未落地。
+`docs/design.md` 对自身工程化缺口完全自知，已将测试/CI 列入 Phase 1 计划；截至 2026-08-17，后端测试与 design.md 入版本控制已落地，CI/lint/Docker 仍未落地。
 
 ---
 
@@ -177,14 +190,16 @@ Lab 的 L 通道 mean/std 匹配，目标值取全帧集中位数，scale/shift 
 
 - **算法层面**：分割与去背是核心竞争力，经过真实迭代打磨；抽帧容错链超出同类小项目水准；pack 与 lighting 是有意为之的轻量实现。
 - **代码层面**：前后端类型契约严谨，四条工作流真实闭环。
-- **工程层面**：文档驱动、功能扎实，但验证基础设施为零，属于“个人兴趣项目”的自我定位。
-- **风险层面**：路径穿越和 remove_bg 参数失效是最需要优先处理的问题；pending 不轮询 + 校验失败卡死是最常见的用户体验陷阱。
+- **工程层面**：文档驱动、功能扎实；验证基础设施从零补上了后端测试（69 个 pytest），CI/lint/Docker 仍为零。
+- **风险层面**（2026-08-17 复核）：路径穿越、remove_bg 参数失效、光照静默吞噬、校验失败卡死均已修复并有测试兜底；剩余最值得注意的是前端 `Result.tsx` 不轮询 `pending` 状态。
 
 ### 7.2 修复优先级
 
-1. **安全**：修复 `store.py` 中 `job_id` / `video_id` / `image_id` 的路径穿越漏洞。
-2. **体验**：修复 worker 前置校验失败不更新任务状态的问题；前端 SWR 增加对 `pending` 状态的轮询。
-3. **功能**：修复图片切片忽略 `remove_bg` 参数的 bug。
-4. **可靠性**：修复光照归一化失败静默吞噬，改为 `status=FAILED` + `error` 字段。
-5. **健壮性**：修复 `Process.tsx` WS 断连陈旧闭包；给 sessionStorage 写入加 try/catch 与配额降级。
-6. **工程债**：补测试、补 CI、补 lint，并将 `docs/design.md` 纳入版本控制。
+> 2026-08-17 复核：1、3、4 已完成（含测试）；2 的后端半项已完成，前端轮询 `pending` 未做；5 的 WS 闭包已修复，sessionStorage 配额降级未做；6 仅后端测试与 design.md 入库完成。
+
+1. **安全**：修复 `store.py` 中 `job_id` / `video_id` / `image_id` 的路径穿越漏洞。✅
+2. **体验**：修复 worker 前置校验失败不更新任务状态的问题；前端 SWR 增加对 `pending` 状态的轮询。🔶（后端 ✅／前端 ⏳）
+3. **功能**：修复图片切片忽略 `remove_bg` 参数的 bug。✅
+4. **可靠性**：修复光照归一化失败静默吞噬，改为 `status=FAILED` + `error` 字段。✅
+5. **健壮性**：修复 `Process.tsx` WS 断连陈旧闭包 ✅；给 sessionStorage 写入加 try/catch 与配额降级 ⏳。
+6. **工程债**：补测试（后端 ✅／前端 ⏳）、补 CI ⏳、补 lint ⏳、`docs/design.md` 纳入版本控制 ✅。

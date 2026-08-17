@@ -92,7 +92,7 @@ Main features:
 - Drag-and-drop frame reordering and per-frame X/Y offset adjustment on the result page
 - Frame-by-frame playback preview
 - Optional lighting normalization to unify brightness and contrast
-- Multi-target export: per-frame PNG ZIP, GIF animation, sprite sheet + JSON, Godot 4, Unity, Cocos Creator
+- Multi-target export: per-frame PNG ZIP, GIF animation, Lottie JSON, sprite sheet + JSON, Godot 4, Unity, Cocos Creator
 
 Typical flow:
 
@@ -115,7 +115,7 @@ Main features:
 - Three background removal modes: standard, conservative (preserves glow/aura), white (removes only pure white)
 - Optional lighting normalization
 - Drag-and-drop reordering of the combined frame list
-- Multi-target export: per-frame PNG ZIP, sprite sheet + JSON, GIF animation, Godot 4, Unity, Cocos Creator
+- Multi-target export: per-frame PNG ZIP, sprite sheet + JSON, GIF animation, Lottie JSON, Godot 4, Unity, Cocos Creator
 
 ### 3. Element Extraction
 
@@ -130,7 +130,7 @@ Main features:
 - Horizontal grid preview with drag-and-drop reordering and per-item deletion
 - Click any item to zoom into a full-size preview
 - Frame-by-frame playback preview
-- Multi-target export: per-item PNG ZIP, animated GIF, sprite sheet + JSON, Godot 4, Unity, Cocos Creator
+- Multi-target export: direct per-item PNG downloads, per-item PNG ZIP, animated GIF, Lottie JSON, sprite sheet + JSON, Godot 4, Unity, Cocos Creator
 
 Typical flow:
 

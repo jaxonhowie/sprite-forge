@@ -45,7 +45,7 @@
   - `build_image_lottie(job_dir: Path, out_path: Path) -> None`
   - 内部:`_build_lottie_from_pngs(png_paths: list[Path], out_path: Path, fps: int = ANIMATION_FPS) -> dict`、`_lottie_opacity_keyframes(i: int) -> list[dict]`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 新建 `services/api/tests/test_lottie_export.py`:
 
@@ -182,12 +182,12 @@ class TestBuildImageLottie:
         assert data["op"] == 1
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `cd services/api && python -m pytest tests/test_lottie_export.py -v`
 Expected: FAIL,`ImportError: cannot import name '_build_lottie_from_pngs' ...`(函数尚未定义)。
 
-- [ ] **Step 3: 实现 builders**
+- [x] **Step 3: 实现 builders**
 
 (a) 在 `exporters.py` 顶部 import 块加 `import base64`(现有 import 见 `exporters.py:1-8`,把 `import base64` 放在 `import json` 之前,保持字母序)。
 
@@ -297,17 +297,17 @@ def build_image_lottie(job_dir: Path, out_path: Path) -> None:
     _build_lottie_from_pngs(item_paths, out_path, fps=ANIMATION_FPS)
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `cd services/api && python -m pytest tests/test_lottie_export.py -v`
 Expected: 全部 PASS(8 个测试)。
 
-- [ ] **Step 5: 跑全量后端测试确保无回归**
+- [x] **Step 5: 跑全量后端测试确保无回归**
 
 Run: `cd services/api && python -m pytest -q`
 Expected: 全绿(新增 8 个 + 原有全过)。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add services/api/forge_api/exporters.py services/api/tests/test_lottie_export.py
@@ -326,7 +326,7 @@ git commit -m "feat(api): add Lottie (bodymovin JSON) export builders"
 - Consumes: `build_video_lottie`、`build_image_lottie`(Task 1 产出,签名见上)。
 - Produces: HTTP `GET /api/jobs/{id}/export.zip?target=lottie` 与 `/api/image-jobs/{id}/export.zip?target=lottie`,返回 `application/json` 的 bodymovin JSON。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `services/api/tests/test_lottie_export.py` 顶部 import 区(现有 import 之后)追加:
 
@@ -388,12 +388,12 @@ class TestExportLottieEndpoint:
         assert len(data["assets"]) == 1
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run: `cd services/api && python -m pytest tests/test_lottie_export.py::TestExportLottieEndpoint -v`
 Expected: FAIL —— endpoint 返回 422/400(FastAPI 拒绝未知 `target=lottie`,因为 Literal 里还没有它),或 200 但 content-type 为 zip(取决于 FastAPI 校验时机)。
 
-- [ ] **Step 3: 接线 endpoint**
+- [x] **Step 3: 接线 endpoint**
 
 (a) 改 `main.py:36` import 行:
 
@@ -454,17 +454,17 @@ from .exporters import (
         )
 ```
 
-- [ ] **Step 4: 运行测试确认通过**
+- [x] **Step 4: 运行测试确认通过**
 
 Run: `cd services/api && python -m pytest tests/test_lottie_export.py -v`
 Expected: 全部 PASS(8 个 builder + 3 个 endpoint = 11 个)。
 
-- [ ] **Step 5: 跑全量后端测试**
+- [x] **Step 5: 跑全量后端测试**
 
 Run: `cd services/api && python -m pytest -q`
 Expected: 全绿,无回归。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add services/api/forge_api/main.py services/api/tests/test_lottie_export.py
@@ -484,7 +484,7 @@ git commit -m "feat(api): expose Lottie export on video/image export endpoints"
 - Consumes: 后端 `target=lottie` endpoint(Task 2)。
 - Produces: 用户点击「导出 Lottie」→ 下载 `spritesheet_<id>_lottie.json` / `image_segments_<id>.json`。
 
-- [ ] **Step 1: 扩展 TS 类型**
+- [x] **Step 1: 扩展 TS 类型**
 
 改 `apps/web/src/api/client.ts:167-168`:
 
@@ -493,7 +493,7 @@ export type EngineExportTarget = 'generic' | 'cocos' | 'unity' | 'godot' | 'fram
 export type ImageExportTarget = 'generic' | 'items' | 'gif' | 'cocos' | 'unity' | 'godot' | 'lottie';
 ```
 
-- [ ] **Step 2: Result.tsx ext 三元**
+- [x] **Step 2: Result.tsx ext 三元**
 
 改 `Result.tsx:261`:
 
@@ -501,7 +501,7 @@ export type ImageExportTarget = 'generic' | 'items' | 'gif' | 'cocos' | 'unity' 
       const ext = target === 'gif' ? 'gif' : target === 'lottie' ? 'json' : 'zip';
 ```
 
-- [ ] **Step 3: Result.tsx 菜单按钮**
+- [x] **Step 3: Result.tsx 菜单按钮**
 
 在 `Result.tsx` 的 GIF 按钮(第 565-571 行的 `handleExport('gif')` button)之后、第 572 行的 `<div className="my-1 border-t ...">` 分隔线之前插入:
 
@@ -515,7 +515,7 @@ export type ImageExportTarget = 'generic' | 'items' | 'gif' | 'cocos' | 'unity' 
                 </button>
 ```
 
-- [ ] **Step 4: ImageResult.tsx ext 三元**
+- [x] **Step 4: ImageResult.tsx ext 三元**
 
 改 `ImageResult.tsx:140`:
 
@@ -523,7 +523,7 @@ export type ImageExportTarget = 'generic' | 'items' | 'gif' | 'cocos' | 'unity' 
       const ext = exportTarget === 'gif' ? 'gif' : exportTarget === 'lottie' ? 'json' : 'zip';
 ```
 
-- [ ] **Step 5: ImageResult.tsx 菜单按钮**
+- [x] **Step 5: ImageResult.tsx 菜单按钮**
 
 在 `ImageResult.tsx` 的 GIF 按钮(第 320-330 行的 `handleExport('gif')` button)之后、第 331 行的分隔线之前插入(沿用该文件的 emoji 风格):
 
@@ -541,12 +541,12 @@ export type ImageExportTarget = 'generic' | 'items' | 'gif' | 'cocos' | 'unity' 
                 </button>
 ```
 
-- [ ] **Step 6: 构建验证**
+- [x] **Step 6: 构建验证**
 
 Run: `npm --prefix apps/web run build`
 Expected: 构建成功,TS 类型与后端 Literal 对齐,无类型错误。
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add apps/web/src/api/client.ts apps/web/src/pages/Result.tsx apps/web/src/pages/ImageResult.tsx
@@ -557,8 +557,8 @@ git commit -m "feat(web): add Lottie export option to result pages"
 
 ## 验收(全流程)
 
-- [ ] **后端测试全绿**:`cd services/api && python -m pytest -q`
-- [ ] **前端构建通过**:`npm --prefix apps/web run build`
+- [x] **后端测试全绿**:`cd services/api && python -m pytest -q`
+- [x] **前端构建通过**:`npm --prefix apps/web run build`
 - [ ] **端到端手测**(需要 `npm run dev` 跑起来,或前后端分别启动):
   1. 跑一个 video job → 结果页点「导出 Lottie」→ 下载 `spritesheet_<id>_lottie.json`,用 `head -c 200` 确认是 JSON、`jq '.op, (.assets|length), (.layers|length)'` 数值合理。
   2. 把该 JSON 拖进 [lottiefiles.com](https://lottiefiles.com/) 在线播放器 或本地 `lottie-web`,确认逐帧循环播放。
